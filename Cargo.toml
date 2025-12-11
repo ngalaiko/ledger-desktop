@@ -1,0 +1,28 @@
+[workspace]
+members = [
+    "crates/ledger-cli",
+    "crates/ledger-desktop",
+]
+resolver = "2"
+
+[workspace.dependencies]
+ledger-cli = { path = "crates/ledger-cli" }
+anyhow = "1.0"
+futures = "0.3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "deny"
+perf = "deny"
+correctness = "deny"
+complexity = "deny"
+style = "deny"
+pedantic = "deny"
+
+[profile.release]
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+lto = true        # Enables link to optimizations
+opt-level = "s"   # Optimize for binary size
+strip = true      # Remove debug symbols

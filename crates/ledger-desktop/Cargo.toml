@@ -1,0 +1,21 @@
+[package]
+name = "ledger-desktop"
+description = "Desktop app for the ledger cli"
+publish = false
+authors = ["Nikita Galaiko <nikita@galaiko.rocks>"]
+edition = "2021"
+repository = "https://github.com/ngalaiko/ledger-desktop"
+license = "GPL-3.0-only"
+
+[dependencies]
+ledger-cli.workspace = true
+
+anyhow.workspace = true 
+futures.workspace = true
+
+gpui = "0.2.2"
+gpui-component = "0.4.0"
+gpui-component-assets = "0.4.0"
+
+[lints]
+workspace = true
