@@ -1,19 +1,26 @@
-[workspace]
-members = [
-    "crates/ledger-cli",
-    "crates/ledger-desktop",
-]
-resolver = "2"
+[package]
+name = "ledger-desktop"
+description = "Desktop app for the ledger cli"
+publish = false
+authors = ["Nikita Galaiko <nikita@galaiko.rocks>"]
+edition = "2021"
+repository = "https://github.com/ngalaiko/ledger-desktop"
+license = "GPL-3.0-only"
 
-[workspace.dependencies]
-ledger-cli = { path = "crates/ledger-cli" }
-anyhow = "1.0"
-futures = "0.3"
+[dependencies]
+futures-lite = "2.6.1"
+async-process = "2.5.0"
+async-channel = "2.5.0"
+async-io = "2.6.0"
 
-[workspace.lints.rust]
+gpui = "0.2.2"
+gpui-component = "0.4.0"
+anyhow = "1.0.100"
+
+[lints.rust]
 unsafe_code = "forbid"
 
-[workspace.lints.clippy]
+[lints.clippy]
 all = "deny"
 perf = "deny"
 correctness = "deny"
