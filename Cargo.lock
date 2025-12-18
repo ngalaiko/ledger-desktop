@@ -3080,6 +3080,7 @@ dependencies = [
  "futures-lite 2.6.1",
  "gpui",
  "gpui-component",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

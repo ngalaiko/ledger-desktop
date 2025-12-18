@@ -8,14 +8,16 @@ repository = "https://github.com/ngalaiko/ledger-desktop"
 license = "GPL-3.0-only"
 
 [dependencies]
-futures-lite = "2.6.1"
-async-process = "2.5.0"
-async-channel = "2.5.0"
-async-io = "2.6.0"
+anyhow = "1.0"
+thiserror = "2.0"
+
+futures-lite = "2.6"
+async-process = "2.5"
+async-channel = "2.5"
+async-io = "2.6"
 
 gpui = "0.2.2"
 gpui-component = "0.4.0"
-anyhow = "1.0.100"
 
 [lints.rust]
 unsafe_code = "forbid"

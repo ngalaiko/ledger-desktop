@@ -58,23 +58,43 @@ impl ReplView {
         let cmd = command.into_bytes();
 
         cx.spawn_in(window, async move |this, cx| {
-            let Some(mut stream) = ledger.stream(&cmd).await else {
-                this.update(cx, |this, cx| {
-                    this.lines.push("Ledger not available".into());
-                    this.busy = false;
-                    cx.notify();
-                })
-                .ok();
-                return;
+            let mut stream = match ledger.stream(&cmd).await {
+                Ok(stream) => stream,
+                Err(_) => {
+                    this.update(cx, |this, cx| {
+                        this.lines.push("Ledger not available".into());
+                        this.busy = false;
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
             };
 
-            while let Some(line) = stream.next().await {
-                let s = String::from_utf8_lossy(&line).trim_end().to_string();
-                this.update(cx, |this, cx| {
-                    this.lines.push(s.into());
-                    cx.notify();
-                })
-                .ok();
+            loop {
+                match stream.next().await {
+                    Ok(Some(line)) => {
+                        let s = String::from_utf8_lossy(&line).trim_end().to_string();
+                        this.update(cx, |this, cx| {
+                            this.lines.push(s.into());
+                            cx.notify();
+                        })
+                        .ok();
+                    }
+                    Ok(None) => {
+                        // Command completed successfully
+                        break;
+                    }
+                    Err(e) => {
+                        // Error occurred (including stderr)
+                        this.update(cx, |this, cx| {
+                            this.lines.push(e.to_string().into());
+                            cx.notify();
+                        })
+                        .ok();
+                        break;
+                    }
+                }
             }
 
             this.update(cx, |this, cx| {
