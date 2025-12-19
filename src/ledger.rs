@@ -35,12 +35,12 @@ pub struct LedgerHandle {
 }
 
 impl LedgerHandle {
-    pub fn spawn(cx: &mut gpui::App) -> Self {
+    pub fn spawn(cx: &mut gpui::App, file: Option<std::path::PathBuf>) -> Self {
         let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
 
         cx.background_executor()
             .spawn(async move {
-                run_actor(cmd_rx).await.expect("Ledger actor failed");
+                run_actor(file, cmd_rx).await.expect("Ledger actor failed");
             })
             .detach();
 
@@ -86,6 +86,99 @@ impl ByteStream {
             }
         }
     }
+
+    pub fn sexp(self) -> SexpStream {
+        SexpStream::new(self)
+    }
+}
+
+pub struct SexpStream {
+    inner: ByteStream,
+    buffer: String,
+}
+
+impl SexpStream {
+    fn new(inner: ByteStream) -> Self {
+        Self {
+            inner,
+            buffer: String::new(),
+        }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<lexpr::Value>, LedgerError> {
+        loop {
+            if let Some((value, consumed)) = try_parse_one(&self.buffer) {
+                self.buffer.drain(..consumed);
+                return Ok(Some(value));
+            }
+
+            match self.inner.next().await {
+                Ok(Some(chunk)) => {
+                    self.buffer.push_str(&String::from_utf8_lossy(&chunk));
+                    self.buffer.push('\n');
+                }
+                Ok(None) => {
+                    if self.buffer.trim().is_empty() {
+                        return Ok(None);
+                    }
+                    match lexpr::from_str(&self.buffer) {
+                        Ok(value) => {
+                            self.buffer.clear();
+                            return Ok(Some(value));
+                        }
+                        Err(e) => {
+                            return Err(LedgerError::Stderr(format!(
+                                "Incomplete S-expression at end of stream: {}",
+                                e
+                            )))
+                        }
+                    }
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    }
+}
+
+fn try_parse_one(input: &str) -> Option<(lexpr::Value, usize)> {
+    let trimmed = input.trim_start();
+    let offset = input.len() - trimmed.len();
+
+    if !trimmed.starts_with('(') {
+        return None;
+    }
+
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape = false;
+
+    for (i, c) in trimmed.char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+
+        match c {
+            '\\' if in_string => escape = true,
+            '"' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    let sexp_str = &trimmed[..=i];
+                    if let Ok(value) = lexpr::from_str(sexp_str) {
+                        return Some((value, offset + i + 1));
+                    }
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,8 +189,11 @@ pub enum ActorError {
     Send(#[from] async_channel::SendError<LedgerEvent>),
 }
 
-async fn run_actor(cmd_rx: Receiver<LedgerCommand>) -> Result<(), ActorError> {
-    let mut ledger = Ledger::spawn().await.map_err(ActorError::Io)?;
+async fn run_actor(
+    file: Option<std::path::PathBuf>,
+    cmd_rx: Receiver<LedgerCommand>,
+) -> Result<(), ActorError> {
+    let mut ledger = Ledger::spawn(file).await.map_err(ActorError::Io)?;
 
     while let Ok(command) = cmd_rx.recv().await {
         let LedgerCommand { cmd, response_tx } = command;
@@ -195,8 +291,14 @@ enum ReadResult {
 }
 
 impl Ledger {
-    async fn spawn() -> std::io::Result<Self> {
-        let mut child = Command::new("ledger")
+    async fn spawn(file: Option<std::path::PathBuf>) -> std::io::Result<Self> {
+        let mut cmd = Command::new("ledger");
+
+        if let Some(file_path) = file {
+            cmd.arg("--file").arg(file_path);
+        }
+
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -306,7 +408,7 @@ mod tests {
             let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
 
             // Spawn actor in background
-            std::thread::spawn(move || futures_lite::future::block_on(run_actor(cmd_rx)));
+            std::thread::spawn(move || futures_lite::future::block_on(run_actor(None, cmd_rx)));
 
             let handle = LedgerHandle { cmd_tx };
 
@@ -340,7 +442,7 @@ mod tests {
             // Set up actor manually
             let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
 
-            std::thread::spawn(move || futures_lite::future::block_on(run_actor(cmd_rx)));
+            std::thread::spawn(move || futures_lite::future::block_on(run_actor(None, cmd_rx)));
 
             let handle = LedgerHandle { cmd_tx };
 
@@ -366,6 +468,42 @@ mod tests {
                 }
                 _ => panic!("Expected LedgerError::Stderr, got: {:?}", error),
             }
+        });
+    }
+
+    #[test]
+    fn test_sexp_stream() {
+        futures_lite::future::block_on(async {
+            let manifest_dir = env!("CARGO_MANIFEST_DIR");
+            let test_file =
+                std::path::PathBuf::from(manifest_dir).join("src/fixtures/jornal.ledger");
+            let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
+
+            std::thread::spawn(move || {
+                futures_lite::future::block_on(run_actor(Some(test_file), cmd_rx))
+            });
+
+            let handle = LedgerHandle { cmd_tx };
+
+            let stream = handle
+                .stream(b"lisp")
+                .await
+                .expect("Failed to send command");
+            let mut sexp_stream = stream.sexp();
+
+            let mut transactions = 0;
+            loop {
+                match sexp_stream.next().await {
+                    Ok(Some(value)) => {
+                        assert!(value.is_list(), "Should be a list/s-expression");
+                        transactions += 1;
+                    }
+                    Ok(None) => break,
+                    Err(e) => panic!("Failed to parse s-expression: {:?}", e),
+                }
+            }
+
+            assert!(transactions > 0, "Should have parsed one transaction");
         });
     }
 }

@@ -11,7 +11,7 @@ fn main() {
     Application::new().run(move |cx| {
         gpui_component::init(cx);
 
-        let ledger = LedgerHandle::spawn(cx);
+        let ledger = LedgerHandle::spawn(cx, None);
 
         cx.open_window(WindowOptions::default(), |window, cx| {
             let view = cx.new(|cx| ReplView::new(ledger, window, cx));
@@ -59,7 +59,7 @@ impl ReplView {
 
         cx.spawn_in(window, async move |this, cx| {
             let mut stream = match ledger.stream(&cmd).await {
-                Ok(stream) => stream,
+                Ok(stream) => stream.sexp(),
                 Err(_) => {
                     this.update(cx, |this, cx| {
                         this.lines.push("Ledger not available".into());
@@ -74,7 +74,7 @@ impl ReplView {
             loop {
                 match stream.next().await {
                     Ok(Some(line)) => {
-                        let s = String::from_utf8_lossy(&line).trim_end().to_string();
+                        let s = line.to_string();
                         this.update(cx, |this, cx| {
                             this.lines.push(s.into());
                             cx.notify();
