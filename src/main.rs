@@ -1,6 +1,7 @@
 mod ledger;
 mod sexpr;
 
+#[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariant, ButtonVariants};
 use gpui_component::input::{Input, InputState};
@@ -58,18 +59,16 @@ impl ReplView {
         let ledger = self.ledger.clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            let mut stream = match ledger.stream(&command).await {
-                Ok(stream) => stream.sexp(),
-                Err(_) => {
-                    this.update(cx, |this, cx| {
-                        this.lines.push("Ledger not available".into());
-                        this.busy = false;
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
+            let Ok(stream) = ledger.stream(&command).await else {
+                this.update(cx, |this, cx| {
+                    this.lines.push("Ledger not available".into());
+                    this.busy = false;
+                    cx.notify();
+                })
+                .ok();
+                return;
             };
+            let mut stream = stream.sexp();
 
             loop {
                 match stream.next().await {
@@ -115,7 +114,7 @@ impl Render for ReplView {
             .size_full()
             .p_4()
             .gap_2()
-            .bg(rgb(0x1a1a1a))
+            .bg(rgb(0x001a_1a1a))
             .child(
                 div()
                     .flex()
@@ -137,11 +136,11 @@ impl Render for ReplView {
                     .p_3()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(0x333333))
-                    .bg(rgb(0x0d0d0d))
+                    .border_color(rgb(0x0033_3333))
+                    .bg(rgb(0x000d_0d0d))
                     .font_family("monospace")
                     .text_sm()
-                    .text_color(rgb(0xe0e0e0))
+                    .text_color(rgb(0x00e0_e0e0))
                     .child(
                         div()
                             .flex()

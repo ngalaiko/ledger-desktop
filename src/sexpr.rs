@@ -11,16 +11,16 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Atom(s) => write!(f, "{}", s),
-            Value::I64(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "\"{}\"", s),
+            Value::Atom(s) => write!(f, "{s}"),
+            Value::I64(n) => write!(f, "{n}"),
+            Value::String(s) => write!(f, "\"{s}\""),
             Value::List(list) => {
                 write!(f, "(")?;
                 for (i, val) in list.iter().enumerate() {
                     if i > 0 {
                         write!(f, " ")?;
                     }
-                    write!(f, "{}", val)?;
+                    write!(f, "{val}")?;
                 }
                 write!(f, ")")
             }
@@ -140,23 +140,18 @@ impl Parser {
     fn flush_atom(&mut self) -> Result<(), Error> {
         if self.current_atom.is_empty() {
             Ok(())
+        } else if matches!(self.current_atom.chars().next(), Some('-' | '0'..='9')) {
+            let num = self
+                .current_atom
+                .parse::<i64>()
+                .map_err(Error::InvalidInteger)?;
+            self.push_value(Value::I64(num));
+            self.current_atom.clear();
+            Ok(())
         } else {
-            match self.current_atom.chars().next() {
-                Some('-') | Some('0'..='9') => {
-                    let num = self
-                        .current_atom
-                        .parse::<i64>()
-                        .map_err(Error::InvalidInteger)?;
-                    self.push_value(Value::I64(num));
-                    self.current_atom.clear();
-                    Ok(())
-                }
-                _ => {
-                    let atom = std::mem::take(&mut self.current_atom);
-                    self.push_value(Value::Atom(atom));
-                    Ok(())
-                }
-            }
+            let atom = std::mem::take(&mut self.current_atom);
+            self.push_value(Value::Atom(atom));
+            Ok(())
         }
     }
 

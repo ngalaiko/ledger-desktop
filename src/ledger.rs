@@ -74,18 +74,14 @@ impl LineStream {
     }
 
     pub async fn next(&mut self) -> Result<Option<String>, LedgerError> {
-        loop {
-            match self.rx.recv().await {
-                Ok(LedgerEvent::Line(line)) => return Ok(Some(line)),
-                Ok(LedgerEvent::Done(Ok(()))) => return Ok(None),
-                Ok(LedgerEvent::Done(Err(e))) => return Err(e),
-                Err(_) => {
-                    return Err(LedgerError::Io(Arc::new(std::io::Error::new(
-                        std::io::ErrorKind::BrokenPipe,
-                        "Channel closed",
-                    ))))
-                }
-            }
+        match self.rx.recv().await {
+            Ok(LedgerEvent::Line(line)) => Ok(Some(line)),
+            Ok(LedgerEvent::Done(Ok(()))) => Ok(None),
+            Ok(LedgerEvent::Done(Err(e))) => Err(e),
+            Err(_) => Err(LedgerError::Io(Arc::new(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "Channel closed",
+            )))),
         }
     }
 
@@ -119,7 +115,7 @@ impl SexpStream {
             match self.inner.next().await {
                 Ok(Some(line)) => {
                     self.parser.take(&line).map_err(|e| {
-                        LedgerError::Stderr(format!("S-expression parse error: {}", e))
+                        LedgerError::Stderr(format!("S-expression parse error: {e}"))
                     })?;
 
                     // Check if any complete s-expressions are ready
@@ -134,7 +130,7 @@ impl SexpStream {
                     // Stream ended - finish parsing
                     let parser = std::mem::replace(&mut self.parser, sexpr::Parser::new());
                     let mut values = parser.finish().map_err(|e| {
-                        LedgerError::Stderr(format!("S-expression parse error: {}", e))
+                        LedgerError::Stderr(format!("S-expression parse error: {e}"))
                     })?;
 
                     if values.is_empty() {
@@ -214,13 +210,7 @@ async fn run_actor(
                 }
                 Ok(ReadResult::Stderr(None)) => {
                     // Stderr EOF - shouldn't happen normally, but treat as error if we have stderr
-                    if !stderr_lines.is_empty() {
-                        let error_msg = stderr_lines.join("").trim().to_string();
-                        response_tx
-                            .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
-                            .await
-                            .map_err(ActorError::Send)?;
-                    } else {
+                    if stderr_lines.is_empty() {
                         response_tx
                             .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(
                                 std::io::Error::new(
@@ -228,6 +218,12 @@ async fn run_actor(
                                     "Stderr closed",
                                 ),
                             )))))
+                            .await
+                            .map_err(ActorError::Send)?;
+                    } else {
+                        let error_msg = stderr_lines.join("").trim().to_string();
+                        response_tx
+                            .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
                             .await
                             .map_err(ActorError::Send)?;
                     }
@@ -273,18 +269,18 @@ impl Ledger {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let stdin = child.stdin.take().ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to open stdin of ledger process",
-        ))?;
-        let stdout = child.stdout.take().ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to open stdout of ledger process",
-        ))?;
-        let stderr = child.stderr.take().ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to open stderr of ledger process",
-        ))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or(std::io::Error::other("Failed to open stdin of ledger process"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or(std::io::Error::other("Failed to open stdout of ledger process"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or(std::io::Error::other("Failed to open stderr of ledger process"))?;
 
         let stdout_reader = BufReader::new(stdout);
         let stderr_reader = BufReader::new(stderr);
