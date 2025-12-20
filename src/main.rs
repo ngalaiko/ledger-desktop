@@ -1,4 +1,5 @@
 mod ledger;
+mod sexpr;
 
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariant, ButtonVariants};
@@ -55,10 +56,9 @@ impl ReplView {
         cx.notify();
 
         let ledger = self.ledger.clone();
-        let cmd = command.into_bytes();
 
         cx.spawn_in(window, async move |this, cx| {
-            let mut stream = match ledger.stream(&cmd).await {
+            let mut stream = match ledger.stream(&command).await {
                 Ok(stream) => stream.sexp(),
                 Err(_) => {
                     this.update(cx, |this, cx| {

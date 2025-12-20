@@ -4,6 +4,8 @@ use async_channel::{bounded, Receiver, Sender};
 use async_process::{Command, Stdio};
 use futures_lite::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+use crate::sexpr;
+
 const MARKER: &[u8] = b"__END_OF_RESPONSE__";
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -20,12 +22,12 @@ pub struct ChannelClosed;
 
 #[derive(Debug, Clone)]
 pub enum LedgerEvent {
-    Line(Vec<u8>),
+    Line(String),
     Done(Result<(), LedgerError>),
 }
 
 struct LedgerCommand {
-    cmd: Vec<u8>,
+    cmd: String,
     response_tx: Sender<LedgerEvent>,
 }
 
@@ -47,7 +49,7 @@ impl LedgerHandle {
         Self { cmd_tx }
     }
 
-    pub async fn send(&self, cmd: Vec<u8>) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
+    pub async fn send(&self, cmd: String) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
         let (response_tx, response_rx) = bounded(64);
         self.cmd_tx
             .send(LedgerCommand { cmd, response_tx })
@@ -56,22 +58,22 @@ impl LedgerHandle {
         Ok(response_rx)
     }
 
-    pub async fn stream(&self, cmd: &[u8]) -> Result<ByteStream, ChannelClosed> {
-        let event_rx = self.send(cmd.to_vec()).await?;
-        Ok(ByteStream::from_events(event_rx))
+    pub async fn stream(&self, cmd: &str) -> Result<LineStream, ChannelClosed> {
+        let event_rx = self.send(cmd.to_string()).await?;
+        Ok(LineStream::from_events(event_rx))
     }
 }
 
-pub struct ByteStream {
+pub struct LineStream {
     rx: Receiver<LedgerEvent>,
 }
 
-impl ByteStream {
+impl LineStream {
     fn from_events(rx: Receiver<LedgerEvent>) -> Self {
         Self { rx }
     }
 
-    pub async fn next(&mut self) -> Result<Option<Vec<u8>>, LedgerError> {
+    pub async fn next(&mut self) -> Result<Option<String>, LedgerError> {
         loop {
             match self.rx.recv().await {
                 Ok(LedgerEvent::Line(line)) => return Ok(Some(line)),
@@ -93,46 +95,54 @@ impl ByteStream {
 }
 
 pub struct SexpStream {
-    inner: ByteStream,
-    buffer: String,
+    inner: LineStream,
+    parser: sexpr::Parser,
+    pending: Vec<sexpr::Value>,
 }
 
 impl SexpStream {
-    fn new(inner: ByteStream) -> Self {
+    fn new(inner: LineStream) -> Self {
         Self {
             inner,
-            buffer: String::new(),
+            parser: sexpr::Parser::new(),
+            pending: Vec::new(),
         }
     }
 
-    pub async fn next(&mut self) -> Result<Option<lexpr::Value>, LedgerError> {
+    pub async fn next(&mut self) -> Result<Option<sexpr::Value>, LedgerError> {
         loop {
-            if let Some((value, consumed)) = try_parse_one(&self.buffer) {
-                self.buffer.drain(..consumed);
+            // Return pending values first
+            if let Some(value) = self.pending.pop() {
                 return Ok(Some(value));
             }
 
             match self.inner.next().await {
-                Ok(Some(chunk)) => {
-                    self.buffer.push_str(&String::from_utf8_lossy(&chunk));
-                    self.buffer.push('\n');
+                Ok(Some(line)) => {
+                    self.parser.take(&line).map_err(|e| {
+                        LedgerError::Stderr(format!("S-expression parse error: {}", e))
+                    })?;
+
+                    // Check if any complete s-expressions are ready
+                    let mut completed = self.parser.drain_output();
+                    if !completed.is_empty() {
+                        // Reverse so we can pop from the end
+                        completed.reverse();
+                        self.pending = completed;
+                    }
                 }
                 Ok(None) => {
-                    if self.buffer.trim().is_empty() {
+                    // Stream ended - finish parsing
+                    let parser = std::mem::replace(&mut self.parser, sexpr::Parser::new());
+                    let mut values = parser.finish().map_err(|e| {
+                        LedgerError::Stderr(format!("S-expression parse error: {}", e))
+                    })?;
+
+                    if values.is_empty() {
                         return Ok(None);
                     }
-                    match lexpr::from_str(&self.buffer) {
-                        Ok(value) => {
-                            self.buffer.clear();
-                            return Ok(Some(value));
-                        }
-                        Err(e) => {
-                            return Err(LedgerError::Stderr(format!(
-                                "Incomplete S-expression at end of stream: {}",
-                                e
-                            )))
-                        }
-                    }
+
+                    values.reverse();
+                    self.pending = values;
                 }
                 Err(e) => {
                     return Err(e);
@@ -140,45 +150,6 @@ impl SexpStream {
             }
         }
     }
-}
-
-fn try_parse_one(input: &str) -> Option<(lexpr::Value, usize)> {
-    let trimmed = input.trim_start();
-    let offset = input.len() - trimmed.len();
-
-    if !trimmed.starts_with('(') {
-        return None;
-    }
-
-    let mut depth = 0;
-    let mut in_string = false;
-    let mut escape = false;
-
-    for (i, c) in trimmed.char_indices() {
-        if escape {
-            escape = false;
-            continue;
-        }
-
-        match c {
-            '\\' if in_string => escape = true,
-            '"' => in_string = !in_string,
-            '(' if !in_string => depth += 1,
-            ')' if !in_string => {
-                depth -= 1;
-                if depth == 0 {
-                    let sexp_str = &trimmed[..=i];
-                    if let Ok(value) = lexpr::from_str(sexp_str) {
-                        return Some((value, offset + i + 1));
-                    }
-                    return None;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -229,8 +200,7 @@ async fn run_actor(
                             .map_err(ActorError::Send)?;
                     } else {
                         // Had stderr - return error
-                        let combined: Vec<u8> = stderr_lines.into_iter().flatten().collect();
-                        let error_msg = String::from_utf8_lossy(&combined).trim().to_string();
+                        let error_msg = stderr_lines.join("").trim().to_string();
                         response_tx
                             .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
                             .await
@@ -245,8 +215,7 @@ async fn run_actor(
                 Ok(ReadResult::Stderr(None)) => {
                     // Stderr EOF - shouldn't happen normally, but treat as error if we have stderr
                     if !stderr_lines.is_empty() {
-                        let combined: Vec<u8> = stderr_lines.into_iter().flatten().collect();
-                        let error_msg = String::from_utf8_lossy(&combined).trim().to_string();
+                        let error_msg = stderr_lines.join("").trim().to_string();
                         response_tx
                             .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
                             .await
@@ -286,8 +255,8 @@ struct Ledger {
 }
 
 enum ReadResult {
-    Stdout(Option<Vec<u8>>),
-    Stderr(Option<Vec<u8>>),
+    Stdout(Option<String>),
+    Stderr(Option<String>),
 }
 
 impl Ledger {
@@ -348,9 +317,9 @@ impl Ledger {
         Ok(())
     }
 
-    async fn command(&mut self, cmd: &[u8]) -> std::io::Result<()> {
+    async fn command(&mut self, cmd: &str) -> std::io::Result<()> {
         if !cmd.is_empty() {
-            self.stdin.write_all(cmd).await?;
+            self.stdin.write_all(cmd.as_bytes()).await?;
             self.stdin.write_all(b"\n").await?;
         }
         self.stdin.write_all(b"echo ").await?;
@@ -371,7 +340,8 @@ impl Ledger {
                 if n == 0 || buf.strip_suffix(b"\n").unwrap_or(&buf) == MARKER {
                     Ok(ReadResult::Stdout(None))
                 } else {
-                    Ok(ReadResult::Stdout(Some(buf)))
+                    let line = String::from_utf8_lossy(&buf).into_owned();
+                    Ok(ReadResult::Stdout(Some(line)))
                 }
             },
             async {
@@ -380,20 +350,22 @@ impl Ledger {
                 if n == 0 {
                     Ok(ReadResult::Stderr(None))
                 } else {
-                    Ok(ReadResult::Stderr(Some(buf)))
+                    let line = String::from_utf8_lossy(&buf).into_owned();
+                    Ok(ReadResult::Stderr(Some(line)))
                 }
             },
         )
         .await
     }
 
-    async fn read_line(&mut self) -> std::io::Result<Option<Vec<u8>>> {
+    async fn read_line(&mut self) -> std::io::Result<Option<String>> {
         let mut buf = Vec::new();
         let n = self.stdout_reader.read_until(b'\n', &mut buf).await?;
         if n == 0 || buf.strip_suffix(b"\n").unwrap_or(&buf) == MARKER {
             return Ok(None);
         }
-        Ok(Some(buf))
+        let line = String::from_utf8_lossy(&buf).into_owned();
+        Ok(Some(line))
     }
 }
 
@@ -414,7 +386,7 @@ mod tests {
 
             // Send valid command
             let mut stream = handle
-                .stream(b"balance")
+                .stream("balance")
                 .await
                 .expect("Failed to send command");
 
@@ -448,7 +420,7 @@ mod tests {
 
             // Send invalid command
             let mut stream = handle
-                .stream(b"invalid")
+                .stream("invalid")
                 .await
                 .expect("Failed to send command");
 
@@ -485,17 +457,17 @@ mod tests {
 
             let handle = LedgerHandle { cmd_tx };
 
-            let stream = handle
-                .stream(b"lisp")
-                .await
-                .expect("Failed to send command");
+            let stream = handle.stream("lisp").await.expect("Failed to send command");
             let mut sexp_stream = stream.sexp();
 
             let mut transactions = 0;
             loop {
                 match sexp_stream.next().await {
                     Ok(Some(value)) => {
-                        assert!(value.is_list(), "Should be a list/s-expression");
+                        assert!(
+                            matches!(value, sexpr::Value::List(_)),
+                            "Should be a list/s-expression"
+                        );
                         transactions += 1;
                     }
                     Ok(None) => break,
@@ -503,7 +475,7 @@ mod tests {
                 }
             }
 
-            assert!(transactions > 0, "Should have parsed one transaction");
+            assert_eq!(transactions, 1, "Should have parsed one transaction");
         });
     }
 }
