@@ -8,6 +8,7 @@ use futures_lite::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use futures_lite::{Future, Stream};
 
 use crate::sexpr;
+use crate::transactions;
 
 const MARKER: &[u8] = b"__END_OF_RESPONSE__";
 
@@ -145,6 +146,10 @@ where
             finished: false,
         }
     }
+
+    pub fn transactions(self) -> TransactionStream<S> {
+        TransactionStream::new(self)
+    }
 }
 
 impl<S> Stream for SexpStream<S>
@@ -214,6 +219,56 @@ where
                 }
                 Poll::Pending => return Poll::Pending,
             }
+        }
+    }
+}
+
+pin_project_lite::pin_project! {
+    pub struct TransactionStream<S> {
+        #[pin]
+        inner: SexpStream<S>,
+    }
+}
+
+impl<S> TransactionStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    pub fn new(inner: SexpStream<S>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<S> Stream for TransactionStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    type Item = Result<transactions::Transaction, LedgerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        match this.inner.poll_next(cx) {
+            Poll::Ready(Some(Ok(sexpr_value))) => {
+                // Parse the sexpr value as a transaction
+                let sexpr::Value::List(ref list) = sexpr_value else {
+                    return Poll::Ready(Some(Err(LedgerError::Stderr(format!(
+                        "Expected list for transaction, got: {:?}",
+                        sexpr_value
+                    )))));
+                };
+
+                match transactions::Transaction::from_sexpr(list) {
+                    Ok(transaction) => Poll::Ready(Some(Ok(transaction))),
+                    Err(e) => Poll::Ready(Some(Err(LedgerError::Stderr(format!(
+                        "Failed to parse transaction: {}",
+                        e
+                    ))))),
+                }
+            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }

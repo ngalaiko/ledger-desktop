@@ -1,6 +1,6 @@
 use core::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Atom(String),
     I64(i64),
@@ -57,13 +57,6 @@ pub struct Parser {
     /// Track if we're inside the outer list
     /// True means we've opened the outer `(` and are streaming its children
     in_outer_list: bool,
-}
-
-/// Convenience function to parse a complete s-expression from a &str
-pub fn parse_sexpr(input: &str) -> Result<Vec<Value>, Error> {
-    let mut parser = Parser::new();
-    parser.take(input)?;
-    parser.finish()
 }
 
 impl Parser {
