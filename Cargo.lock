@@ -3079,6 +3079,7 @@ dependencies = [
  "futures-lite 2.6.1",
  "gpui",
  "gpui-component",
+ "pin-project-lite",
  "thiserror 2.0.17",
 ]
 

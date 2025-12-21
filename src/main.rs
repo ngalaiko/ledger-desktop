@@ -1,6 +1,8 @@
 mod ledger;
 mod sexpr;
+mod transactions;
 
+use futures_lite::StreamExt;
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariant, ButtonVariants};
@@ -68,11 +70,11 @@ impl ReplView {
                 .ok();
                 return;
             };
-            let mut stream = stream.sexp();
+            let mut stream = stream.sexpr();
 
             loop {
                 match stream.next().await {
-                    Ok(Some(line)) => {
+                    Some(Ok(line)) => {
                         let s = line.to_string();
                         this.update(cx, |this, cx| {
                             this.lines.push(s.into());
@@ -80,11 +82,11 @@ impl ReplView {
                         })
                         .ok();
                     }
-                    Ok(None) => {
+                    None => {
                         // Command completed successfully
                         break;
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         // Error occurred (including stderr)
                         this.update(cx, |this, cx| {
                             this.lines.push(e.to_string().into());

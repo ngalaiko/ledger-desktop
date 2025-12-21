@@ -1,8 +1,11 @@
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use async_channel::{bounded, Receiver, Sender};
 use async_process::{Command, Stdio};
 use futures_lite::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use futures_lite::{Future, Stream};
 
 use crate::sexpr;
 
@@ -64,85 +67,152 @@ impl LedgerHandle {
     }
 }
 
-pub struct LineStream {
-    rx: Receiver<LedgerEvent>,
+pin_project_lite::pin_project! {
+    pub struct LineStream {
+        rx: Receiver<LedgerEvent>,
+        #[pin]
+        pending: Option<Pin<Box<dyn std::future::Future<Output = Result<LedgerEvent, async_channel::RecvError>> + Send>>>,
+    }
 }
 
 impl LineStream {
     fn from_events(rx: Receiver<LedgerEvent>) -> Self {
-        Self { rx }
+        Self { rx, pending: None }
     }
 
-    pub async fn next(&mut self) -> Result<Option<String>, LedgerError> {
-        match self.rx.recv().await {
-            Ok(LedgerEvent::Line(line)) => Ok(Some(line)),
-            Ok(LedgerEvent::Done(Ok(()))) => Ok(None),
-            Ok(LedgerEvent::Done(Err(e))) => Err(e),
-            Err(_) => Err(LedgerError::Io(Arc::new(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "Channel closed",
-            )))),
-        }
-    }
-
-    pub fn sexp(self) -> SexpStream {
+    pub fn sexpr(self) -> SexpStream<Self> {
         SexpStream::new(self)
     }
 }
 
-pub struct SexpStream {
-    inner: LineStream,
-    parser: sexpr::Parser,
-    pending: Vec<sexpr::Value>,
+impl Stream for LineStream {
+    type Item = Result<String, LedgerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.project();
+
+        loop {
+            // If we have a pending future, poll it
+            if let Some(fut) = this.pending.as_mut().as_pin_mut() {
+                match fut.poll(cx) {
+                    Poll::Ready(result) => {
+                        // Clear the pending future
+                        this.pending.set(None);
+
+                        return match result {
+                            Ok(LedgerEvent::Line(line)) => Poll::Ready(Some(Ok(line))),
+                            Ok(LedgerEvent::Done(Ok(()))) => Poll::Ready(None),
+                            Ok(LedgerEvent::Done(Err(e))) => Poll::Ready(Some(Err(e))),
+                            Err(_) => Poll::Ready(Some(Err(LedgerError::Io(Arc::new(
+                                std::io::Error::new(
+                                    std::io::ErrorKind::BrokenPipe,
+                                    "Channel closed",
+                                ),
+                            ))))),
+                        };
+                    }
+                    Poll::Pending => return Poll::Pending,
+                }
+            }
+
+            // No pending future, create a new one
+            let rx = this.rx.clone();
+            this.pending
+                .set(Some(Box::pin(async move { rx.recv().await })));
+        }
+    }
 }
 
-impl SexpStream {
-    fn new(inner: LineStream) -> Self {
+pin_project_lite::pin_project! {
+    pub struct SexpStream<S> {
+        #[pin]
+        inner: S,
+        parser: sexpr::Parser,
+        pending: Vec<sexpr::Value>,
+        finished: bool,
+    }
+}
+
+impl<S> SexpStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    pub fn new(inner: S) -> Self {
         Self {
             inner,
             parser: sexpr::Parser::new(),
             pending: Vec::new(),
+            finished: false,
         }
     }
+}
 
-    pub async fn next(&mut self) -> Result<Option<sexpr::Value>, LedgerError> {
+impl<S> Stream for SexpStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    type Item = Result<sexpr::Value, LedgerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.project();
+
         loop {
             // Return pending values first
-            if let Some(value) = self.pending.pop() {
-                return Ok(Some(value));
+            if let Some(value) = this.pending.pop() {
+                return Poll::Ready(Some(Ok(value)));
             }
 
-            match self.inner.next().await {
-                Ok(Some(line)) => {
-                    self.parser.take(&line).map_err(|e| {
-                        LedgerError::Stderr(format!("S-expression parse error: {e}"))
-                    })?;
+            // If we've already finished, return None
+            if *this.finished {
+                return Poll::Ready(None);
+            }
+
+            // Poll the inner stream
+            match this.inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(line))) => {
+                    // Got a line, parse it
+                    if let Err(e) = this.parser.take(&line) {
+                        *this.finished = true;
+                        return Poll::Ready(Some(Err(LedgerError::Stderr(format!(
+                            "S-expression parse error: {e}"
+                        )))));
+                    }
 
                     // Check if any complete s-expressions are ready
-                    let mut completed = self.parser.drain_output();
+                    let mut completed = this.parser.drain_output();
                     if !completed.is_empty() {
                         // Reverse so we can pop from the end
                         completed.reverse();
-                        self.pending = completed;
+                        *this.pending = completed;
+                        // Continue loop to return the first pending value
                     }
+                    // If no completed values yet, continue polling
                 }
-                Ok(None) => {
+                Poll::Ready(Some(Err(e))) => {
+                    *this.finished = true;
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Ready(None) => {
                     // Stream ended - finish parsing
-                    let parser = std::mem::replace(&mut self.parser, sexpr::Parser::new());
-                    let mut values = parser.finish().map_err(|e| {
-                        LedgerError::Stderr(format!("S-expression parse error: {e}"))
-                    })?;
-
-                    if values.is_empty() {
-                        return Ok(None);
+                    *this.finished = true;
+                    let parser = std::mem::replace(this.parser, sexpr::Parser::new());
+                    match parser.finish() {
+                        Ok(mut values) => {
+                            if values.is_empty() {
+                                return Poll::Ready(None);
+                            }
+                            values.reverse();
+                            *this.pending = values;
+                            // Continue loop to return the first pending value
+                        }
+                        Err(e) => {
+                            return Poll::Ready(Some(Err(LedgerError::Stderr(format!(
+                                "S-expression parse error: {e}"
+                            )))));
+                        }
                     }
-
-                    values.reverse();
-                    self.pending = values;
                 }
-                Err(e) => {
-                    return Err(e);
-                }
+                Poll::Pending => return Poll::Pending,
             }
         }
     }
@@ -269,18 +339,15 @@ impl Ledger {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or(std::io::Error::other("Failed to open stdin of ledger process"))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or(std::io::Error::other("Failed to open stdout of ledger process"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or(std::io::Error::other("Failed to open stderr of ledger process"))?;
+        let stdin = child.stdin.take().ok_or(std::io::Error::other(
+            "Failed to open stdin of ledger process",
+        ))?;
+        let stdout = child.stdout.take().ok_or(std::io::Error::other(
+            "Failed to open stdout of ledger process",
+        ))?;
+        let stderr = child.stderr.take().ok_or(std::io::Error::other(
+            "Failed to open stderr of ledger process",
+        ))?;
 
         let stdout_reader = BufReader::new(stdout);
         let stderr_reader = BufReader::new(stderr);
@@ -368,6 +435,7 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_lite::StreamExt;
 
     #[test]
     fn test_valid_command_no_stderr() {
@@ -389,14 +457,14 @@ mod tests {
             // Read all events and ensure no errors
             loop {
                 match stream.next().await {
-                    Ok(Some(_line)) => {
+                    Some(Ok(_line)) => {
                         // Got output, continue
                     }
-                    Ok(None) => {
+                    None => {
                         // Done - this is success
                         break;
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         panic!("Valid command should not produce error, got: {:?}", e);
                     }
                 }
@@ -423,9 +491,9 @@ mod tests {
             // Read events - should eventually get a stderr error
             let error = loop {
                 match stream.next().await {
-                    Ok(Some(_line)) => continue,
-                    Ok(None) => panic!("Invalid command should produce error, not success"),
-                    Err(e) => break e,
+                    Some(Ok(_line)) => continue,
+                    None => panic!("Invalid command should produce error, not success"),
+                    Some(Err(e)) => break e,
                 }
             };
 
@@ -454,20 +522,20 @@ mod tests {
             let handle = LedgerHandle { cmd_tx };
 
             let stream = handle.stream("lisp").await.expect("Failed to send command");
-            let mut sexp_stream = stream.sexp();
+            let mut sexp_stream = stream.sexpr();
 
             let mut transactions = 0;
             loop {
                 match sexp_stream.next().await {
-                    Ok(Some(value)) => {
+                    Some(Ok(value)) => {
                         assert!(
                             matches!(value, sexpr::Value::List(_)),
                             "Should be a list/s-expression"
                         );
                         transactions += 1;
                     }
-                    Ok(None) => break,
-                    Err(e) => panic!("Failed to parse s-expression: {:?}", e),
+                    None => break,
+                    Some(Err(e)) => panic!("Failed to parse s-expression: {:?}", e),
                 }
             }
 
