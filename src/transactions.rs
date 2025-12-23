@@ -13,8 +13,10 @@ pub enum ParseTransactionError {
     PostingError(usize, ParsePostingError),
 }
 
+#[derive(Debug, Clone)]
 pub struct Transaction {
     pub file: path::PathBuf,
+    pub line: i64,
     pub time: time::SystemTime,
     pub description: String,
     pub postings: Vec<Posting>,
@@ -26,6 +28,9 @@ impl Transaction {
             return Err(ParseTransactionError::UnexpectedLength(5, value.len()));
         }
         let sexpr::Value::String(file) = value[0].to_owned() else {
+            return Err(ParseTransactionError::UnexpectedType(1, value[1].clone()));
+        };
+        let sexpr::Value::I64(line) = value[1].to_owned() else {
             return Err(ParseTransactionError::UnexpectedType(1, value[1].clone()));
         };
         let sexpr::Value::I64(epoch_seconds) = value[2].to_owned() else {
@@ -50,6 +55,7 @@ impl Transaction {
             .collect::<Result<Vec<Posting>, ParseTransactionError>>()?;
         Ok(Transaction {
             file: path::PathBuf::from(file),
+            line,
             time: time::UNIX_EPOCH + time::Duration::from_secs(epoch_seconds as u64),
             description,
             postings,
@@ -65,6 +71,7 @@ pub enum ParsePostingError {
     UnexpectedType(usize, sexpr::Value),
 }
 
+#[derive(Debug, Clone)]
 pub struct Posting {
     pub account: String,
     pub amount: String,
@@ -126,6 +133,7 @@ mod tests {
             transaction.file,
             path::PathBuf::from("/Users/nikita.galaiko/Developer/finance/transactions/2025.ledger")
         );
+        assert_eq!(transaction.line, 8561);
         assert_eq!(transaction.description, "Kop");
         assert_eq!(
             transaction.time,
