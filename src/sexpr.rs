@@ -59,7 +59,7 @@ pub struct Parser {
     in_outer_list: bool,
 }
 
-/// Convenience function to parse a complete s-expression from a &str
+#[cfg(test)]
 pub fn parse_sexpr(input: &str) -> Result<Vec<Value>, Error> {
     let mut parser = Parser::new();
     parser.take(input)?;

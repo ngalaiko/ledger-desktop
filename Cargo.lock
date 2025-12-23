@@ -2228,6 +2228,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-component-assets"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c1c9651d87a0682396dce011cca6d7c58bfce72a6bb71144ca0cff4ddfcd925"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "rust-embed",
+]
+
+[[package]]
 name = "gpui-component-macros"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3079,6 +3090,7 @@ dependencies = [
  "futures-lite 2.6.1",
  "gpui",
  "gpui-component",
+ "gpui-component-assets",
  "pin-project-lite",
  "thiserror 2.0.17",
 ]
@@ -4645,6 +4657,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rust-embed-utils",
+ "shellexpand",
  "syn 2.0.111",
  "walkdir",
 ]
@@ -5130,6 +5143,15 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shellexpand"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b1fdf65dd6331831494dd616b30351c38e96e45921a27745cf98490458b90bb"
+dependencies = [
+ "dirs 5.0.1",
 ]
 
 [[package]]

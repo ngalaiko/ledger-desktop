@@ -1,6 +1,8 @@
 use std::path;
 use std::time;
 
+use crate::accounts::Account;
+use crate::accounts::ParseAccountError;
 use crate::sexpr;
 
 #[derive(Debug, thiserror::Error)]
@@ -69,11 +71,13 @@ pub enum ParsePostingError {
     UnexpectedLength(usize, usize),
     #[error("expected type {1} at position {0}")]
     UnexpectedType(usize, sexpr::Value),
+    #[error("invalid account name: {0}")]
+    InvalidAccountName(ParseAccountError),
 }
 
 #[derive(Debug, Clone)]
 pub struct Posting {
-    pub account: String,
+    pub account: Account,
     pub amount: String,
     pub note: Option<String>,
 }
@@ -86,6 +90,7 @@ impl Posting {
         let sexpr::Value::String(account) = value[1].to_owned() else {
             return Err(ParsePostingError::UnexpectedType(1, value[1].clone()));
         };
+        let account = Account::parse(&account).map_err(ParsePostingError::InvalidAccountName)?;
         let sexpr::Value::String(amount) = value[2].to_owned() else {
             return Err(ParsePostingError::UnexpectedType(2, value[2].clone()));
         };
@@ -117,7 +122,7 @@ mod tests {
         let sexpr_str = "(8562 \"expenses:Pending\" \"148.95 SEK\" pending \" shared:: 35%\")";
         let sexpr_value = sexpr::parse_sexpr(sexpr_str).expect("should sexpr");
         let posting = Posting::from_sexpr(&sexpr_value).expect("should parse posting");
-        assert_eq!(posting.account, "expenses:Pending");
+        assert_eq!(posting.account.to_string(), "expenses:Pending");
         assert_eq!(posting.amount, "148.95 SEK");
         assert!(posting.note.is_some());
         assert_eq!(posting.note.unwrap(), " shared:: 35%");
@@ -141,7 +146,7 @@ mod tests {
         );
         assert_eq!(transaction.postings.len(), 1);
         let posting = &transaction.postings[0];
-        assert_eq!(posting.account, "expenses:Pending");
+        assert_eq!(posting.account.to_string(), "expenses:Pending");
         assert_eq!(posting.amount, "148.95 SEK");
         assert!(posting.note.is_some());
         assert_eq!(posting.note.as_ref().unwrap(), " shared:: 35%");
