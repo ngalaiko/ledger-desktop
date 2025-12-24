@@ -50,7 +50,8 @@ impl State {
                     Some(Ok(transaction)) => {
                         this.update(cx, |this, _cx| {
                             for posting in transaction.postings.iter() {
-                                this.accounts.add_account(posting.account.clone());
+                                let node = this.accounts.add_account(posting.account.clone());
+                                node.balance.add_amount(posting.amount.clone());
                             }
 
                             this.transactions.push(transaction.clone());
@@ -65,6 +66,7 @@ impl State {
                         break;
                     }
                     Some(Err(e)) => {
+                        eprintln!("Error parsing transaction: {}", e);
                         this.update(cx, |this, cx| {
                             this.error = Some(format!("Error parsing transaction: {}", e));
                             cx.notify();

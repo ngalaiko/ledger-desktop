@@ -1,5 +1,8 @@
+use core::fmt;
 use std::path;
 use std::time;
+
+use rust_decimal::Decimal;
 
 use crate::accounts::Account;
 use crate::sexpr;
@@ -70,12 +73,14 @@ pub enum ParsePostingError {
     UnexpectedLength(usize, usize),
     #[error("expected type {1} at position {0}")]
     UnexpectedType(usize, sexpr::Value),
+    #[error("invalid amount: {0}")]
+    InvalidAmount(ParseAmounError),
 }
 
 #[derive(Debug, Clone)]
 pub struct Posting {
     pub account: Account,
-    pub amount: String,
+    pub amount: Amount,
     pub note: Option<String>,
 }
 
@@ -91,6 +96,7 @@ impl Posting {
         let sexpr::Value::String(amount) = value[2].to_owned() else {
             return Err(ParsePostingError::UnexpectedType(2, value[2].clone()));
         };
+        let amount = Amount::parse(&amount).map_err(ParsePostingError::InvalidAmount)?;
         if value.len() == 5 {
             let sexpr::Value::String(note) = value[4].to_owned() else {
                 return Err(ParsePostingError::UnexpectedType(4, value[4].clone()));
@@ -110,6 +116,46 @@ impl Posting {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ParseAmounError {
+    #[error(transparent)]
+    InvalidDecimal(rust_decimal::Error),
+    #[error("invalid amount format")]
+    InvalidFormat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Amount {
+    pub value: Decimal,
+    pub commodity: String,
+}
+
+impl fmt::Display for Amount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.value, self.commodity)
+    }
+}
+
+impl Amount {
+    pub fn parse(amount_str: &str) -> Result<Self, ParseAmounError> {
+        let mut parts = amount_str.split_whitespace().collect::<Vec<_>>();
+        if parts.is_empty() {
+            return Err(ParseAmounError::InvalidFormat);
+        }
+        let value = parts.remove(0);
+        let value = value.replace(",", ""); // Remove commas for thousands separators
+        let value = Decimal::from_str_exact(&value).map_err(ParseAmounError::InvalidDecimal)?;
+        if parts.is_empty() {
+            return Ok(Amount {
+                value,
+                commodity: "".to_string(),
+            });
+        }
+        let commodity = parts.remove(0).to_string();
+        Ok(Amount { value, commodity })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,7 +166,10 @@ mod tests {
         let sexpr_value = sexpr::parse_sexpr(sexpr_str).expect("should sexpr");
         let posting = Posting::from_sexpr(&sexpr_value).expect("should parse posting");
         assert_eq!(posting.account.to_string(), "expenses:Pending");
-        assert_eq!(posting.amount, "148.95 SEK");
+        assert_eq!(
+            posting.amount,
+            Amount::parse("148.95 SEK").expect("should parse amount")
+        );
         assert!(posting.note.is_some());
         assert_eq!(posting.note.unwrap(), " shared:: 35%");
     }
@@ -144,8 +193,43 @@ mod tests {
         assert_eq!(transaction.postings.len(), 1);
         let posting = &transaction.postings[0];
         assert_eq!(posting.account.to_string(), "expenses:Pending");
-        assert_eq!(posting.amount, "148.95 SEK");
+        assert_eq!(
+            posting.amount,
+            Amount::parse("148.95 SEK").expect("should parse amount")
+        );
         assert!(posting.note.is_some());
         assert_eq!(posting.note.as_ref().unwrap(), " shared:: 35%");
+    }
+
+    #[test]
+    fn test_parse_amount_no_commodity() {
+        let amount_str = "-1,020.48";
+        let amount = Amount::parse(amount_str).expect("should parse amount");
+        assert_eq!(amount.value, Decimal::from_str_exact("-1020.48").unwrap());
+        assert_eq!(amount.commodity, "");
+    }
+
+    #[test]
+    fn test_parse_amount_thousand() {
+        let amount_str = "-1,020.48 GEL";
+        let amount = Amount::parse(amount_str).expect("should parse amount");
+        assert_eq!(amount.value, Decimal::from_str_exact("-1020.48").unwrap());
+        assert_eq!(amount.commodity, "GEL");
+    }
+
+    #[test]
+    fn test_parse_amount_simple() {
+        let amount_str = "-20.48 GEL";
+        let amount = Amount::parse(amount_str).expect("should parse amount");
+        assert_eq!(amount.value, Decimal::from_str_exact("-20.48").unwrap());
+        assert_eq!(amount.commodity, "GEL");
+    }
+
+    #[test]
+    fn test_parse_amount_priced() {
+        let amount_str = "-20.48 GEL {3.6041025641 SEK} [2025/12/03]";
+        let amount = Amount::parse(amount_str).expect("should parse amount");
+        assert_eq!(amount.value, Decimal::from_str_exact("-20.48").unwrap());
+        assert_eq!(amount.commodity, "GEL");
     }
 }

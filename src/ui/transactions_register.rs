@@ -189,7 +189,7 @@ impl TableDelegate for TransactionTableDelegate {
                     // Amount
                     div()
                         .text_color(rgb(0x0080_ff80))
-                        .child(posting.amount.clone())
+                        .child(posting.amount.to_string())
                 }
                 _ => div(),
             }

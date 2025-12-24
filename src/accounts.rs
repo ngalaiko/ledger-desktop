@@ -1,4 +1,9 @@
 use core::fmt;
+use std::collections::HashMap;
+
+use rust_decimal::Decimal;
+
+use crate::transactions::Amount;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Account {
@@ -65,8 +70,43 @@ impl Account {
     }
 }
 
+#[derive(Debug)]
+pub struct Balance {
+    by_commodity: HashMap<String, Amount>,
+}
+
+impl fmt::Display for Balance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+        for amount in self.by_commodity.values() {
+            parts.push(format!("{}", amount));
+        }
+        write!(f, "{}", parts.join(", "))
+    }
+}
+
+impl Balance {
+    pub fn new() -> Self {
+        Self {
+            by_commodity: HashMap::new(),
+        }
+    }
+
+    pub fn add_amount(&mut self, amount: Amount) {
+        let entry = self
+            .by_commodity
+            .entry(amount.commodity.clone())
+            .or_insert(Amount {
+                value: Decimal::new(0, 0),
+                commodity: amount.commodity.clone(),
+            });
+        entry.value += amount.value;
+    }
+}
+
 pub struct TreeNode {
     pub account: Account,
+    pub balance: Balance,
     pub children: Vec<TreeNode>,
 }
 
@@ -74,6 +114,7 @@ impl TreeNode {
     pub fn new() -> Self {
         Self {
             account: Account::empty(),
+            balance: Balance::new(),
             children: Vec::new(),
         }
     }
@@ -81,18 +122,19 @@ impl TreeNode {
     pub fn clear(&mut self) {
         self.children = Vec::new();
         self.account = Account::empty();
+        self.balance = Balance::new();
     }
 
-    pub fn add_account(&mut self, account: Account) {
-        self.add_account_recursive(&account.segments, 0, account.clone());
+    pub fn add_account(&mut self, account: Account) -> &mut Self {
+        self.add_account_recursive(&account, 0)
     }
 
-    fn add_account_recursive(&mut self, segments: &[String], depth: usize, full_account: Account) {
-        if depth >= segments.len() {
-            return;
+    fn add_account_recursive(&mut self, account: &Account, depth: usize) -> &mut Self {
+        if depth >= account.segments.len() {
+            return self;
         }
 
-        let current = Account::from_segments(segments[..=depth].to_vec());
+        let current = Account::from_segments(account.segments[..=depth].to_vec());
 
         // Find or create child node
         let child_index = self
@@ -105,6 +147,7 @@ impl TreeNode {
             None => {
                 self.children.push(TreeNode {
                     account: current,
+                    balance: Balance::new(),
                     children: Vec::new(),
                 });
                 self.children.len() - 1
@@ -113,7 +156,7 @@ impl TreeNode {
 
         let child = &mut self.children[child_index];
 
-        child.add_account_recursive(segments, depth + 1, full_account);
+        child.add_account_recursive(account, depth + 1)
     }
 }
 

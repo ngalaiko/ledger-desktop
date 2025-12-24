@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use gpui::*;
 use gpui_component::tree::TreeItem;
 
-use crate::accounts::{self, Account, TreeNode};
+use crate::accounts::{Account, TreeNode};
 use crate::ui::dropdown_tree::{dropdown_tree, DropdownTreeState};
 
 use super::dropdown_tree::DropdownTreeEvent;
@@ -57,7 +57,8 @@ fn build_account_tree(node: &TreeNode) -> Vec<TreeItem> {
     let mut items = Vec::new();
 
     for child in &node.children {
-        let mut item = TreeItem::new(child.account.to_string(), child.account.name().to_string());
+        let label = format!("{} ({})", child.account.name(), child.balance.to_string());
+        let mut item = TreeItem::new(child.account.to_string(), label);
 
         if !child.children.is_empty() {
             item = item.expanded(false);
