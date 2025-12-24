@@ -3087,6 +3087,7 @@ dependencies = [
  "async-channel 2.5.0",
  "async-io",
  "async-process",
+ "chrono",
  "futures-lite 2.6.1",
  "gpui",
  "gpui-component",

@@ -12,6 +12,18 @@ impl fmt::Display for Account {
 }
 
 impl Account {
+    pub fn is_parent_of(&self, other: &Account) -> bool {
+        if self.segments.len() >= other.segments.len() {
+            return false;
+        }
+        for (a, b) in self.segments.iter().zip(other.segments.iter()) {
+            if a != b {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn from_segments(segments: Vec<String>) -> Self {
         Account { segments }
     }

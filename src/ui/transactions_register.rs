@@ -1,47 +1,54 @@
 use std::collections::HashSet;
-use std::rc::Rc;
 
+use chrono::{DateTime, Local};
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
-use gpui_component::v_virtual_list;
+use gpui_component::{
+    h_flex,
+    table::{Column, Table, TableDelegate, TableState},
+};
 
 use crate::{accounts::Account, transactions::Transaction, ui::state::StateUpdatedEvent};
 
 use super::state::LedgerState;
 
 pub struct RegisterView {
-    all_transactions: Vec<Transaction>,
-    transaction_views: Vec<Entity<TransactionView>>,
-    transaction_sizes: Rc<Vec<Size<Pixels>>>,
+    table_state: Entity<TableState<TransactionTableDelegate>>,
     filter_accounts: HashSet<Account>,
 }
 
 impl RegisterView {
-    pub fn new(ledger_state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        ledger_state: Entity<LedgerState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let table_state =
+            cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
+
         cx.subscribe(
             &ledger_state,
-            |this, _ledger_state, event, cx| match event {
+            move |this, _ledger_state, event, cx| match event {
                 StateUpdatedEvent::Reset => {
-                    this.all_transactions.clear();
-                    this.transaction_views.clear();
-                    Rc::make_mut(&mut this.transaction_sizes).clear();
-                    cx.notify();
+                    this.table_state.update(cx, |state, cx| {
+                        state.delegate_mut().transactions.clear();
+                        state.delegate_mut().all_transactions.clear();
+                        state.refresh(cx);
+                    });
                 }
                 StateUpdatedEvent::NewAccount { .. } => {
                     // No action needed for new accounts
                 }
                 StateUpdatedEvent::NewTransaction { transaction } => {
-                    this.all_transactions.push(transaction.clone());
+                    this.table_state.update(cx, |state, cx| {
+                        let delegate = state.delegate_mut();
+                        delegate.all_transactions.push(transaction.clone());
 
-                    if this.transaction_matches_filter(transaction) {
-                        let transaction_view =
-                            cx.new(|cx| TransactionView::new(transaction.clone(), cx));
-                        let size = transaction_view.read(cx).size();
-                        this.transaction_views.push(transaction_view);
-                        let sizes = Rc::make_mut(&mut this.transaction_sizes);
-                        sizes.push(size);
-                    }
-                    cx.notify();
+                        if this.transaction_matches_filter(transaction) {
+                            delegate.transactions.push(transaction.clone());
+                            state.refresh(cx);
+                        }
+                    });
                 }
                 StateUpdatedEvent::Error { message: _message } => {
                     todo!();
@@ -49,10 +56,9 @@ impl RegisterView {
             },
         )
         .detach();
+
         Self {
-            all_transactions: vec![],
-            transaction_views: vec![],
-            transaction_sizes: Rc::new(vec![]),
+            table_state,
             filter_accounts: HashSet::new(),
         }
     }
@@ -67,128 +73,171 @@ impl RegisterView {
         transaction.postings.iter().any(|posting| {
             self.filter_accounts.iter().any(|filter| {
                 // Match if posting account equals filter or is a child of filter
-                &posting.account == filter
-                    || (posting.account.segments.len() > filter.segments.len()
-                        && posting.account.segments[..filter.segments.len()] == filter.segments[..])
+                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
             })
         })
     }
 
     fn rebuild_filtered_views(&mut self, cx: &mut Context<Self>) {
-        self.transaction_views.clear();
-        Rc::make_mut(&mut self.transaction_sizes).clear();
+        self.table_state.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            delegate.transactions.clear();
 
-        for transaction in &self.all_transactions {
-            if self.transaction_matches_filter(transaction) {
-                let transaction_view = cx.new(|cx| TransactionView::new(transaction.clone(), cx));
-                let size = transaction_view.read(cx).size();
-                self.transaction_views.push(transaction_view);
-                let sizes = Rc::make_mut(&mut self.transaction_sizes);
-                sizes.push(size);
+            for transaction in &delegate.all_transactions {
+                if self.filter_accounts.is_empty() {
+                    delegate.transactions.push(transaction.clone());
+                    continue;
+                }
+
+                let matching_postings = transaction
+                    .postings
+                    .iter()
+                    .filter(|posting| {
+                        self.filter_accounts.iter().any(|filter| {
+                            posting.account.eq(filter) || filter.is_parent_of(&posting.account)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                if matching_postings.is_empty() {
+                    // No matching postings, skip this transaction
+                    continue;
+                }
+
+                let filtered_transaction = Transaction {
+                    postings: matching_postings.into_iter().cloned().collect(),
+                    ..transaction.clone()
+                };
+
+                delegate.transactions.push(filtered_transaction);
             }
-        }
+            state.refresh(cx);
+        });
     }
 
     pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
         self.filter_accounts = accounts;
         self.rebuild_filtered_views(cx);
-        cx.notify();
     }
 }
 
 impl Render for RegisterView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
-
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .p_4()
-            .gap_2()
-            .bg(rgb(0x001a_1a1a))
-            .child(
-                div()
-                    .flex_grow()
-                    .p_3()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(rgb(0x0033_3333))
-                    .bg(rgb(0x000d_0d0d))
-                    .font_family("monospace")
-                    .text_sm()
-                    .text_color(rgb(0x00e0_e0e0))
-                    .child(v_virtual_list(
-                        view,
-                        "transactions-list",
-                        self.transaction_sizes.clone(),
-                        move |this: &mut RegisterView, range, _window, _cx| {
-                            this.transaction_views[range].to_vec()
-                        },
-                    )),
-            )
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        Table::new(&self.table_state)
     }
 }
 
-struct TransactionView {
-    transaction: Transaction,
+struct TransactionTableDelegate {
+    all_transactions: Vec<Transaction>,
+    transactions: Vec<Transaction>,
+    columns: Vec<Column>,
 }
 
-impl TransactionView {
-    fn new(transaction: Transaction, _cx: &mut Context<Self>) -> Self {
-        Self { transaction }
-    }
-
-    pub fn size(&self) -> Size<Pixels> {
-        let height = 40.0 + 24.0 * self.transaction.postings.len() as f32;
-        Size {
-            height: px(height),
-            width: px(0.0),
+impl TransactionTableDelegate {
+    fn new(transactions: Vec<Transaction>) -> Self {
+        let columns = vec![
+            Column::new("date", "Date").width(px(100.0)),
+            Column::new("description", "Description").width(px(300.0)),
+            Column::new("account", "Account").width(px(250.0)),
+            Column::new("amount", "Amount")
+                .width(px(120.0))
+                .text_right(),
+        ];
+        Self {
+            all_transactions: transactions.clone(),
+            transactions,
+            columns,
         }
     }
+
+    // Helper to get the transaction and posting index for a given row
+    fn get_row_data(&self, row_ix: usize) -> Option<(usize, usize, bool)> {
+        let mut current_row = 0;
+        for (tx_ix, transaction) in self.transactions.iter().enumerate() {
+            for (posting_ix, _) in transaction.postings.iter().enumerate() {
+                if current_row == row_ix {
+                    return Some((tx_ix, posting_ix, posting_ix == 0));
+                }
+                current_row += 1;
+            }
+        }
+        None
+    }
 }
 
-impl Render for TransactionView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let size = self.size();
-        div()
-            .h(size.height)
-            .p_2()
-            .mb_2()
-            .rounded_md()
-            .bg(rgb(0x001a_1a1a))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_color(rgb(0x00a0_a0ff))
-                            .child(format!("{}", self.transaction.description)),
-                    )
-                    .child(div().text_xs().text_color(rgb(0x0080_8080)).child(format!(
-                        "{} - {:?}",
-                        self.transaction.file.display(),
-                        self.transaction.time
-                    )))
-                    .children(self.transaction.postings.iter().map(|posting| {
-                        div()
-                            .pl_4()
-                            .flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_color(rgb(0x00ff_ff80))
-                                    .child(posting.account.to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_color(rgb(0x0080_ff80))
-                                    .child(posting.amount.clone()),
-                            )
-                    })),
-            )
+impl TableDelegate for TransactionTableDelegate {
+    fn columns_count(&self, _cx: &App) -> usize {
+        4
+    }
+
+    fn rows_count(&self, _cx: &App) -> usize {
+        self.transactions.iter().map(|t| t.postings.len()).sum()
+    }
+
+    fn column(&self, col_ix: usize, _cx: &App) -> &Column {
+        &self.columns[col_ix]
+    }
+
+    fn render_tr(&self, row_ix: usize, _window: &mut Window, _cx: &mut App) -> Stateful<Div> {
+        // Get the transaction index for this row to determine background color
+        let bg_color = if let Some((tx_ix, _, _)) = self.get_row_data(row_ix) {
+            if tx_ix % 2 == 0 {
+                rgb(0x000d_0d0d) // Same as table background for even transactions
+            } else {
+                rgb(0x0015_1515) // Slightly lighter for odd transactions
+            }
+        } else {
+            rgb(0x000d_0d0d)
+        };
+
+        h_flex().id(("row", row_ix)).bg(bg_color)
+    }
+
+    fn render_td(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> impl IntoElement {
+        if let Some((tx_ix, posting_ix, is_first)) = self.get_row_data(row_ix) {
+            let transaction = &self.transactions[tx_ix];
+            let posting = &transaction.postings[posting_ix];
+
+            match col_ix {
+                0 => {
+                    // Date
+                    if is_first {
+                        let datetime: DateTime<Local> = transaction.time.into();
+                        div().child(datetime.format("%Y-%m-%d").to_string())
+                    } else {
+                        div() // Empty for subsequent postings
+                    }
+                }
+                1 => {
+                    // Description
+                    if is_first {
+                        div().child(transaction.description.clone())
+                    } else {
+                        div() // Empty for subsequent postings
+                    }
+                }
+                2 => {
+                    // Account
+                    div()
+                        .text_color(rgb(0x00ff_ff80))
+                        .child(posting.account.to_string())
+                }
+                3 => {
+                    // Amount
+                    div()
+                        .text_color(rgb(0x0080_ff80))
+                        .child(posting.amount.clone())
+                }
+                _ => div(),
+            }
+        } else {
+            div()
+        }
     }
 }
