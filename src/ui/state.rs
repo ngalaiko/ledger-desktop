@@ -36,7 +36,7 @@ impl State {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let Ok(stream) = ledger.stream("lisp --lisp-date-format seconds").await else {
+            let Ok(mut stream) = ledger.transactions().await else {
                 this.update(cx, |this, cx| {
                     this.error = Some("Failed to start ledger process".into());
                     cx.notify();
@@ -44,7 +44,6 @@ impl State {
                 .ok();
                 return;
             };
-            let mut stream = stream.sexpr().transactions();
 
             loop {
                 match stream.next().await {

@@ -53,18 +53,29 @@ impl LedgerHandle {
         Self { cmd_tx }
     }
 
-    pub async fn send(&self, cmd: String) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
+    async fn send(&self, cmd: &str) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
         let (response_tx, response_rx) = bounded(64);
         self.cmd_tx
-            .send(LedgerCommand { cmd, response_tx })
+            .send(LedgerCommand {
+                cmd: cmd.to_string(),
+                response_tx,
+            })
             .await
             .map_err(|_| ChannelClosed)?;
         Ok(response_rx)
     }
 
+    #[cfg(test)]
     pub async fn stream(&self, cmd: &str) -> Result<LineStream, ChannelClosed> {
-        let event_rx = self.send(cmd.to_string()).await?;
-        Ok(LineStream::from_events(event_rx))
+        let event_rx = self.send(cmd).await?;
+        let line_stream = LineStream::from_events(event_rx);
+        Ok(line_stream)
+    }
+
+    pub async fn transactions(&self) -> Result<TransactionStream<LineStream>, ChannelClosed> {
+        let event_rx = self.send("lisp --lisp-date-format seconds").await?;
+        let line_stream = LineStream::from_events(event_rx);
+        Ok(line_stream.sexpr().transactions())
     }
 }
 
