@@ -1,11 +1,18 @@
-#[allow(clippy::wildcard_imports)]
 use std::collections::HashMap;
 use std::ops::Range;
 
+#[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::list::ListItem;
 use gpui_component::tree::TreeItem;
 use gpui_component::{h_flex, Icon, IconName, Sizable};
+
+/// Events emitted by DropdownTreeState
+#[derive(Clone)]
+pub enum DropdownTreeEvent {
+    /// An item was selected
+    Selected { entry: DropdownTreeEntry },
+}
 
 /// A tree entry with depth information
 #[derive(Clone)]
@@ -29,6 +36,22 @@ impl DropdownTreeEntry {
 }
 
 /// State for managing dropdown tree items with separate toggle and selection actions
+///
+/// # Events
+/// This component emits `DropdownTreeEvent::Selected` when an item is selected.
+///
+/// # Example
+/// ```ignore
+/// let tree_state = cx.new(|cx| DropdownTreeState::new(cx));
+///
+/// cx.subscribe(&tree_state, |this, _tree_state, event, cx| {
+///     match event {
+///         DropdownTreeEvent::Selected{ entry } => {
+///             println!("Selected: {}", entry.item().label);
+///         }
+///     }
+/// });
+/// ```
 pub struct DropdownTreeState {
     focus_handle: FocusHandle,
     root_items: Vec<TreeItem>,
@@ -81,11 +104,19 @@ impl DropdownTreeState {
         self.selected_ix
     }
 
-    /// Set the selected index
+    /// Set the selected index and emit a Selected event
     pub fn set_selected_index(&mut self, ix: Option<usize>, cx: &mut Context<Self>) {
         self.selected_ix = ix;
         if let Some(ix) = ix {
-            self.scroll_handle.scroll_to_item(ix, ScrollStrategy::Center);
+            self.scroll_handle
+                .scroll_to_item(ix, ScrollStrategy::Center);
+
+            // Emit the Selected event
+            if let Some(entry) = self.entries.get(ix) {
+                cx.emit(DropdownTreeEvent::Selected {
+                    entry: entry.clone(),
+                });
+            }
         }
         cx.notify();
     }
@@ -140,6 +171,8 @@ impl DropdownTreeState {
     }
 }
 
+impl EventEmitter<DropdownTreeEvent> for DropdownTreeState {}
+
 impl Render for DropdownTreeState {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div().id("dropdown-tree-state").size_full()
@@ -189,32 +222,30 @@ impl RenderOnce for DropdownTree {
         let entry_count = self.tree_state.read(cx).entries.len();
         let scroll_handle = self.tree_state.read(cx).scroll_handle.clone();
 
-        div()
-            .id("dropdown-tree")
-            .size_full()
-            .child(
-                uniform_list(
-                    "dropdown-tree-entries",
-                    entry_count,
-                    move |visible_range: Range<usize>, window, cx| {
-                        // Collect all data we need from state first
-                        let entries_data: Vec<_> = {
-                            let state = tree_state_clone.read(cx);
-                            visible_range.clone()
-                                .filter_map(|ix| {
-                                    let entry = state.entries.get(ix)?;
-                                    let depth = entry.depth();
-                                    let is_folder = entry.is_folder();
-                                    let is_expanded = state.is_expanded(&entry.item.id);
-                                    let selected = Some(ix) == state.selected_ix;
-                                    Some((ix, entry.clone(), depth, is_folder, is_expanded, selected))
-                                })
-                                .collect()
-                        };
+        div().id("dropdown-tree").size_full().child(
+            uniform_list(
+                "dropdown-tree-entries",
+                entry_count,
+                move |visible_range: Range<usize>, window, cx| {
+                    // Collect all data we need from state first
+                    let entries_data: Vec<_> = {
+                        let state = tree_state_clone.read(cx);
+                        visible_range
+                            .clone()
+                            .filter_map(|ix| {
+                                let entry = state.entries.get(ix)?;
+                                let depth = entry.depth();
+                                let is_folder = entry.is_folder();
+                                let is_expanded = state.is_expanded(&entry.item.id);
+                                let selected = Some(ix) == state.selected_ix;
+                                Some((ix, entry.clone(), depth, is_folder, is_expanded, selected))
+                            })
+                            .collect()
+                    };
 
-                        let mut items = Vec::with_capacity(entries_data.len());
+                    let mut items = Vec::with_capacity(entries_data.len());
 
-                        for (ix, entry_clone, depth, is_folder, is_expanded, selected) in entries_data {
+                    for (ix, entry_clone, depth, is_folder, is_expanded, selected) in entries_data {
                         let tree_state_for_chevron = tree_state_clone.clone();
                         let tree_state_for_label = tree_state_clone.clone();
                         let render_label = render_label.clone();
@@ -239,15 +270,12 @@ impl RenderOnce for DropdownTree {
                                 .id(("chevron", ix))
                                 .cursor_pointer()
                                 .child(Icon::new(chevron_icon).small().text_color(gpui::white()))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    move |_event, _window, cx| {
-                                        tree_state_for_chevron.update(cx, |state, cx| {
-                                            state.toggle_expanded(ix, cx);
-                                        });
-                                        cx.stop_propagation();
-                                    },
-                                );
+                                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                                    tree_state_for_chevron.update(cx, |state, cx| {
+                                        state.toggle_expanded(ix, cx);
+                                    });
+                                    cx.stop_propagation();
+                                });
 
                             content = content.child(chevron);
                         } else {
@@ -262,32 +290,27 @@ impl RenderOnce for DropdownTree {
                             .flex_grow()
                             .cursor_pointer()
                             .child(label_element)
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                move |_event, _window, cx| {
-                                    tree_state_for_label.update(cx, |state, cx| {
-                                        state.set_selected_index(Some(ix), cx);
-                                    });
-                                    cx.stop_propagation();
-                                },
-                            );
+                            .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                                tree_state_for_label.update(cx, |state, cx| {
+                                    state.set_selected_index(Some(ix), cx);
+                                });
+                                cx.stop_propagation();
+                            });
 
                         content = content.child(label);
 
-                        let item = ListItem::new(ix)
-                            .selected(selected)
-                            .child(content);
+                        let item = ListItem::new(ix).selected(selected).child(content);
 
                         items.push(div().id(ix).child(item));
                     }
 
-                        items
-                    },
-                )
-                .flex_grow()
-                .size_full()
-                .track_scroll(scroll_handle)
-                .with_sizing_behavior(ListSizingBehavior::Auto),
+                    items
+                },
             )
+            .flex_grow()
+            .size_full()
+            .track_scroll(scroll_handle)
+            .with_sizing_behavior(ListSizingBehavior::Auto),
+        )
     }
 }

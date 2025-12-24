@@ -2,19 +2,38 @@
 use gpui::*;
 use gpui_component::tree::TreeItem;
 
-use crate::accounts::{self, TreeNode};
+use crate::accounts::{self, Account, TreeNode};
 use crate::ui::dropdown_tree::{dropdown_tree, DropdownTreeState};
 
+use super::dropdown_tree::DropdownTreeEvent;
 use super::state::{LedgerState, StateUpdatedEvent};
 
-pub struct AccountsTree {
+pub enum AccountsTreeEvent {
+    Selected { account: Account },
+}
+
+impl EventEmitter<AccountsTreeEvent> for AccountsTreeView {}
+
+pub struct AccountsTreeView {
     tree: accounts::TreeNode,
     accounts_tree: Entity<DropdownTreeState>,
 }
 
-impl AccountsTree {
+impl AccountsTreeView {
     pub fn new(ledger_state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
         let accounts_tree = cx.new(|cx| DropdownTreeState::new(cx));
+
+        cx.subscribe(
+            &accounts_tree,
+            |_this, _accounts_tree, event, cx| match event {
+                DropdownTreeEvent::Selected { entry } => {
+                    let account = Account::parse(entry.item().id.as_str());
+                    cx.emit(AccountsTreeEvent::Selected { account });
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
 
         cx.subscribe(
             &ledger_state,
@@ -24,11 +43,16 @@ impl AccountsTree {
                 }
                 StateUpdatedEvent::NewAccount { account } => {
                     this.tree.add_account(account.clone());
-                    this.rebuild_tree(cx);
+                    let tree_items = build_account_tree(&this.tree);
+                    this.accounts_tree.update(cx, |state, cx| {
+                        state.set_items(tree_items, cx);
+                    });
                 }
                 StateUpdatedEvent::Reset => {
                     this.tree.clear();
-                    this.rebuild_tree(cx);
+                    this.accounts_tree.update(cx, |state, cx| {
+                        state.set_items(Vec::new(), cx);
+                    });
                 }
                 StateUpdatedEvent::Error { message: _message } => {
                     // Keep the current tree on error
@@ -42,26 +66,13 @@ impl AccountsTree {
             accounts_tree,
         }
     }
-
-    fn rebuild_tree(&mut self, cx: &mut Context<Self>) {
-        let tree_items = build_account_tree(&self.tree);
-        self.accounts_tree.update(cx, |state, cx| {
-            state.set_items(tree_items, cx);
-        });
-    }
 }
 
 fn build_account_tree(node: &TreeNode) -> Vec<TreeItem> {
     let mut items = Vec::new();
 
     for child in &node.children {
-        let id = if let Some(ref account) = child.full_account {
-            account.to_string()
-        } else {
-            child.name.clone()
-        };
-
-        let mut item = TreeItem::new(id, child.name.clone());
+        let mut item = TreeItem::new(child.account.to_string(), child.account.name().to_string());
 
         if !child.children.is_empty() {
             item = item.expanded(false);
@@ -76,7 +87,7 @@ fn build_account_tree(node: &TreeNode) -> Vec<TreeItem> {
     items
 }
 
-impl Render for AccountsTree {
+impl Render for AccountsTreeView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         dropdown_tree(&self.accounts_tree, |entry, _window, _cx| {
             div().child(entry.item().label.clone()).into_any_element()

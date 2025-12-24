@@ -4,7 +4,7 @@ use std::rc::Rc;
 use gpui::*;
 use gpui_component::v_virtual_list;
 
-use crate::{transactions::Transaction, ui::file::state::StateUpdatedEvent};
+use crate::{transactions::Transaction, ui::state::StateUpdatedEvent};
 
 use super::state::LedgerState;
 
@@ -14,11 +14,7 @@ pub struct RegisterView {
 }
 
 impl RegisterView {
-    pub fn new(
-        ledger_state: Entity<LedgerState>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(ledger_state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
         cx.subscribe(
             &ledger_state,
             |this, _ledger_state, event, cx| match event {

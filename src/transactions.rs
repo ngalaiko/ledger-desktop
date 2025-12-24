@@ -2,7 +2,6 @@ use std::path;
 use std::time;
 
 use crate::accounts::Account;
-use crate::accounts::ParseAccountError;
 use crate::sexpr;
 
 #[derive(Debug, thiserror::Error)]
@@ -71,8 +70,6 @@ pub enum ParsePostingError {
     UnexpectedLength(usize, usize),
     #[error("expected type {1} at position {0}")]
     UnexpectedType(usize, sexpr::Value),
-    #[error("invalid account name: {0}")]
-    InvalidAccountName(ParseAccountError),
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +87,7 @@ impl Posting {
         let sexpr::Value::String(account) = value[1].to_owned() else {
             return Err(ParsePostingError::UnexpectedType(1, value[1].clone()));
         };
-        let account = Account::parse(&account).map_err(ParsePostingError::InvalidAccountName)?;
+        let account = Account::parse(&account);
         let sexpr::Value::String(amount) = value[2].to_owned() else {
             return Err(ParsePostingError::UnexpectedType(2, value[2].clone()));
         };
