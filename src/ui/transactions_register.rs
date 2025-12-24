@@ -8,110 +8,69 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
-use crate::{accounts::Account, transactions::Transaction, ui::state::StateUpdatedEvent};
+use crate::{accounts::Account, transactions::Transaction};
 
-use super::state::LedgerState;
+use super::state::State;
 
 pub struct RegisterView {
+    state: Entity<State>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
     filter_accounts: HashSet<Account>,
 }
 
 impl RegisterView {
-    pub fn new(
-        ledger_state: Entity<LedgerState>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
-        cx.subscribe(
-            &ledger_state,
-            move |this, _ledger_state, event, cx| match event {
-                StateUpdatedEvent::Reset => {
-                    this.table_state.update(cx, |state, cx| {
-                        state.delegate_mut().transactions.clear();
-                        state.delegate_mut().all_transactions.clear();
-                        state.refresh(cx);
-                    });
-                }
-                StateUpdatedEvent::NewAccount { .. } => {
-                    // No action needed for new accounts
-                }
-                StateUpdatedEvent::NewTransaction { transaction } => {
-                    this.table_state.update(cx, |state, cx| {
-                        let delegate = state.delegate_mut();
-                        delegate.all_transactions.push(transaction.clone());
-
-                        if this.transaction_matches_filter(transaction) {
-                            delegate.transactions.push(transaction.clone());
-                            state.refresh(cx);
-                        }
-                    });
-                }
-                StateUpdatedEvent::Error { message: _message } => {
-                    todo!();
-                }
-            },
-        )
+        cx.observe(&state, |this, _state, cx| {
+            this.rebuild_filtered_views(cx);
+        })
         .detach();
 
         Self {
+            state,
             table_state,
             filter_accounts: HashSet::new(),
         }
     }
 
-    fn transaction_matches_filter(&self, transaction: &Transaction) -> bool {
-        // If no filters, show all transactions
-        if self.filter_accounts.is_empty() {
-            return true;
-        }
-
-        // Transaction matches if ANY posting matches ANY filter account (or is a child of it)
-        transaction.postings.iter().any(|posting| {
-            self.filter_accounts.iter().any(|filter| {
-                // Match if posting account equals filter or is a child of filter
-                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
-            })
-        })
-    }
-
     fn rebuild_filtered_views(&mut self, cx: &mut Context<Self>) {
-        self.table_state.update(cx, |state, cx| {
-            let delegate = state.delegate_mut();
-            delegate.transactions.clear();
-
-            for transaction in &delegate.all_transactions {
+        let filtered_transactions = self
+            .state
+            .read(cx)
+            .transactions
+            .iter()
+            .filter_map(|transaction| {
                 if self.filter_accounts.is_empty() {
-                    delegate.transactions.push(transaction.clone());
-                    continue;
-                }
-
-                let matching_postings = transaction
-                    .postings
-                    .iter()
-                    .filter(|posting| {
-                        self.filter_accounts.iter().any(|filter| {
-                            posting.account.eq(filter) || filter.is_parent_of(&posting.account)
+                    Some(transaction.clone())
+                } else {
+                    let matching_postings = transaction
+                        .postings
+                        .iter()
+                        .filter(|posting| {
+                            self.filter_accounts.iter().any(|filter| {
+                                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
+                            })
                         })
-                    })
-                    .collect::<Vec<_>>();
+                        .collect::<Vec<_>>();
 
-                if matching_postings.is_empty() {
-                    // No matching postings, skip this transaction
-                    continue;
+                    if matching_postings.is_empty() {
+                        // No matching postings, skip this transaction
+                        None
+                    } else {
+                        Some(Transaction {
+                            postings: matching_postings.into_iter().cloned().collect(),
+                            ..transaction.clone()
+                        })
+                    }
                 }
-
-                let filtered_transaction = Transaction {
-                    postings: matching_postings.into_iter().cloned().collect(),
-                    ..transaction.clone()
-                };
-
-                delegate.transactions.push(filtered_transaction);
-            }
-            state.refresh(cx);
+            })
+            .collect::<Vec<_>>();
+        self.table_state.update(cx, |table_state, cx| {
+            let delegate = table_state.delegate_mut();
+            delegate.transactions = filtered_transactions;
+            table_state.refresh(cx);
         });
     }
 
@@ -128,7 +87,6 @@ impl Render for RegisterView {
 }
 
 struct TransactionTableDelegate {
-    all_transactions: Vec<Transaction>,
     transactions: Vec<Transaction>,
     columns: Vec<Column>,
 }
@@ -144,7 +102,6 @@ impl TransactionTableDelegate {
                 .text_right(),
         ];
         Self {
-            all_transactions: transactions.clone(),
             transactions,
             columns,
         }

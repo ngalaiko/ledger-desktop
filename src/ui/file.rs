@@ -1,22 +1,20 @@
 use gpui::*;
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
-use super::{
-    accounts_tree::AccountsTreeView, state::LedgerState, transactions_register::RegisterView,
-};
+use super::{accounts_tree::AccountsTreeView, state::State, transactions_register::RegisterView};
 
 pub struct LedgerFile {
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
 
-    _ledger_state: Entity<LedgerState>,
+    _state: Entity<State>,
 }
 
 impl LedgerFile {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let ledger_state = cx.new(|cx| LedgerState::new(cx));
-        let accounts_tree = cx.new(|cx| AccountsTreeView::new(ledger_state.clone(), cx));
-        let register_view = cx.new(|cx| RegisterView::new(ledger_state.clone(), window, cx));
+        let state = cx.new(|cx| State::new(cx));
+        let accounts_tree = cx.new(|cx| AccountsTreeView::new(state.clone(), cx));
+        let register_view = cx.new(|cx| RegisterView::new(state.clone(), window, cx));
 
         cx.subscribe(
             &accounts_tree,
@@ -33,7 +31,7 @@ impl LedgerFile {
         Self {
             accounts_tree,
             register_view,
-            _ledger_state: ledger_state,
+            _state: state,
         }
     }
 }
@@ -43,13 +41,9 @@ impl Render for LedgerFile {
         h_resizable("ledger-register")
             .child(
                 resizable_panel()
-                    .size(px(100.))
+                    .size(px(250.))
                     .child(self.accounts_tree.clone()),
             )
-            .child(
-                resizable_panel()
-                    .size(px(100.))
-                    .child(self.register_view.clone()),
-            )
+            .child(resizable_panel().child(self.register_view.clone()))
     }
 }

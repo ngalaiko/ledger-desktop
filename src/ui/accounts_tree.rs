@@ -8,7 +8,7 @@ use crate::accounts::{self, Account, TreeNode};
 use crate::ui::dropdown_tree::{dropdown_tree, DropdownTreeState};
 
 use super::dropdown_tree::DropdownTreeEvent;
-use super::state::{LedgerState, StateUpdatedEvent};
+use super::state::State;
 
 pub enum AccountsTreeEvent {
     Selected { accounts: HashSet<Account> },
@@ -17,12 +17,11 @@ pub enum AccountsTreeEvent {
 impl EventEmitter<AccountsTreeEvent> for AccountsTreeView {}
 
 pub struct AccountsTreeView {
-    tree: accounts::TreeNode,
     accounts_tree: Entity<DropdownTreeState>,
 }
 
 impl AccountsTreeView {
-    pub fn new(ledger_state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
         let accounts_tree = cx.new(|cx| DropdownTreeState::new(cx));
 
         cx.subscribe(
@@ -40,36 +39,17 @@ impl AccountsTreeView {
         )
         .detach();
 
-        cx.subscribe(
-            &ledger_state,
-            |this, _ledger_state, event, cx| match event {
-                StateUpdatedEvent::NewTransaction { .. } => {
-                    // No action needed for new transactions
-                }
-                StateUpdatedEvent::NewAccount { account } => {
-                    this.tree.add_account(account.clone());
-                    let tree_items = build_account_tree(&this.tree);
-                    this.accounts_tree.update(cx, |state, cx| {
-                        state.set_items(tree_items, cx);
-                    });
-                }
-                StateUpdatedEvent::Reset => {
-                    this.tree.clear();
-                    this.accounts_tree.update(cx, |state, cx| {
-                        state.set_items(Vec::new(), cx);
-                    });
-                }
-                StateUpdatedEvent::Error { message: _message } => {
-                    // Keep the current tree on error
-                }
-            },
-        )
+        cx.observe(&state, |this, state, cx| {
+            let tree_items = build_account_tree(&state.read(cx).accounts);
+            this.accounts_tree.update(cx, |state, cx| {
+                state.set_items(tree_items, cx);
+                cx.notify();
+            });
+            cx.notify();
+        })
         .detach();
 
-        Self {
-            tree: accounts::TreeNode::new(),
-            accounts_tree,
-        }
+        Self { accounts_tree }
     }
 }
 
