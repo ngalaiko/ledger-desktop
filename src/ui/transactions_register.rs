@@ -4,13 +4,15 @@ use std::rc::Rc;
 use gpui::*;
 use gpui_component::v_virtual_list;
 
-use crate::{transactions::Transaction, ui::state::StateUpdatedEvent};
+use crate::{accounts::Account, transactions::Transaction, ui::state::StateUpdatedEvent};
 
 use super::state::LedgerState;
 
 pub struct RegisterView {
+    all_transactions: Vec<Transaction>,
     transaction_views: Vec<Entity<TransactionView>>,
     transaction_sizes: Rc<Vec<Size<Pixels>>>,
+    filter_account: Option<Account>,
 }
 
 impl RegisterView {
@@ -19,6 +21,7 @@ impl RegisterView {
             &ledger_state,
             |this, _ledger_state, event, cx| match event {
                 StateUpdatedEvent::Reset => {
+                    this.all_transactions.clear();
                     this.transaction_views.clear();
                     Rc::make_mut(&mut this.transaction_sizes).clear();
                     cx.notify();
@@ -27,12 +30,16 @@ impl RegisterView {
                     // No action needed for new accounts
                 }
                 StateUpdatedEvent::NewTransaction { transaction } => {
-                    let transaction_view =
-                        cx.new(|cx| TransactionView::new(transaction.clone(), cx));
-                    let size = transaction_view.read(cx).size();
-                    this.transaction_views.push(transaction_view);
-                    let sizes = Rc::make_mut(&mut this.transaction_sizes);
-                    sizes.push(size);
+                    this.all_transactions.push(transaction.clone());
+
+                    if this.transaction_matches_filter(transaction) {
+                        let transaction_view =
+                            cx.new(|cx| TransactionView::new(transaction.clone(), cx));
+                        let size = transaction_view.read(cx).size();
+                        this.transaction_views.push(transaction_view);
+                        let sizes = Rc::make_mut(&mut this.transaction_sizes);
+                        sizes.push(size);
+                    }
                     cx.notify();
                 }
                 StateUpdatedEvent::Error { message: _message } => {
@@ -42,9 +49,44 @@ impl RegisterView {
         )
         .detach();
         Self {
+            all_transactions: vec![],
             transaction_views: vec![],
             transaction_sizes: Rc::new(vec![]),
+            filter_account: None,
         }
+    }
+
+    fn transaction_matches_filter(&self, transaction: &Transaction) -> bool {
+        match &self.filter_account {
+            None => true,
+            Some(filter) => transaction.postings.iter().any(|posting| {
+                // Match if posting account equals filter or is a child of filter
+                &posting.account == filter
+                    || (posting.account.segments.len() > filter.segments.len()
+                        && posting.account.segments[..filter.segments.len()] == filter.segments[..])
+            }),
+        }
+    }
+
+    fn rebuild_filtered_views(&mut self, cx: &mut Context<Self>) {
+        self.transaction_views.clear();
+        Rc::make_mut(&mut self.transaction_sizes).clear();
+
+        for transaction in &self.all_transactions {
+            if self.transaction_matches_filter(transaction) {
+                let transaction_view = cx.new(|cx| TransactionView::new(transaction.clone(), cx));
+                let size = transaction_view.read(cx).size();
+                self.transaction_views.push(transaction_view);
+                let sizes = Rc::make_mut(&mut self.transaction_sizes);
+                sizes.push(size);
+            }
+        }
+    }
+
+    pub fn set_account_filter(&mut self, filter: Option<Account>, cx: &mut Context<Self>) {
+        self.filter_account = filter;
+        self.rebuild_filtered_views(cx);
+        cx.notify();
     }
 }
 
