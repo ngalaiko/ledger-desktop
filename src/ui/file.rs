@@ -14,7 +14,7 @@ pub struct LedgerFile {
 
 impl LedgerFile {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let ledger_state = cx.new(|cx| LedgerState::new(window, cx));
+        let ledger_state = cx.new(|cx| LedgerState::new(cx));
         let accounts_tree = cx.new(|cx| AccountsTreeView::new(ledger_state.clone(), cx));
         let register_view = cx.new(|cx| RegisterView::new(ledger_state.clone(), window, cx));
 

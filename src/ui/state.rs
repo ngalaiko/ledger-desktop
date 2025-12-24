@@ -23,7 +23,7 @@ pub struct LedgerState {
 impl EventEmitter<StateUpdatedEvent> for LedgerState {}
 
 impl LedgerState {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new( cx: &mut Context<Self>) -> Self {
         let ledger_handle = LedgerHandle::spawn(cx, None);
         let mut ledger_state = Self {
             accounts: HashSet::new(),
