@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 #[allow(clippy::wildcard_imports)]
@@ -10,8 +10,8 @@ use gpui_component::{h_flex, Icon, IconName, Sizable};
 /// Events emitted by DropdownTreeState
 #[derive(Clone)]
 pub enum DropdownTreeEvent {
-    /// An item was selected
-    Selected { entry: DropdownTreeEntry },
+    /// One or more items were selected
+    Selected { entries: Vec<DropdownTreeEntry> },
 }
 
 /// A tree entry with depth information
@@ -58,7 +58,7 @@ pub struct DropdownTreeState {
     entries: Vec<DropdownTreeEntry>,
     expanded: HashMap<SharedString, bool>,
     scroll_handle: UniformListScrollHandle,
-    selected_ix: Option<usize>,
+    selected_indices: HashSet<usize>,
 }
 
 impl DropdownTreeState {
@@ -69,7 +69,7 @@ impl DropdownTreeState {
             entries: Vec::new(),
             expanded: HashMap::new(),
             scroll_handle: UniformListScrollHandle::default(),
-            selected_ix: None,
+            selected_indices: HashSet::new(),
         }
     }
 
@@ -84,7 +84,7 @@ impl DropdownTreeState {
 
         self.root_items = items;
         self.rebuild_entries();
-        self.selected_ix = None;
+        self.selected_indices.clear();
         cx.notify();
     }
 
@@ -99,31 +99,53 @@ impl DropdownTreeState {
         }
     }
 
-    /// Get the currently selected index
-    pub fn selected_index(&self) -> Option<usize> {
-        self.selected_ix
+    /// Get the currently selected indices
+    pub fn selected_indices(&self) -> &HashSet<usize> {
+        &self.selected_indices
     }
 
-    /// Set the selected index and emit a Selected event
-    pub fn set_selected_index(&mut self, ix: Option<usize>, cx: &mut Context<Self>) {
-        self.selected_ix = ix;
-        if let Some(ix) = ix {
-            self.scroll_handle
-                .scroll_to_item(ix, ScrollStrategy::Center);
-
-            // Emit the Selected event
-            if let Some(entry) = self.entries.get(ix) {
-                cx.emit(DropdownTreeEvent::Selected {
-                    entry: entry.clone(),
-                });
+    /// Select an index with optional shift-key modifier for multi-select
+    /// If shift is true, adds/removes from selection. If false, replaces selection.
+    pub fn select_index(&mut self, ix: usize, shift_held: bool, cx: &mut Context<Self>) {
+        if shift_held {
+            // Toggle this index in the selection
+            if self.selected_indices.contains(&ix) {
+                self.selected_indices.remove(&ix);
+            } else {
+                self.selected_indices.insert(ix);
             }
+        } else {
+            // Replace selection with just this index
+            self.selected_indices.clear();
+            self.selected_indices.insert(ix);
         }
+
+        // Scroll to the clicked item
+        self.scroll_handle
+            .scroll_to_item(ix, ScrollStrategy::Center);
+
+        // Emit the Selected event with all selected entries
+        let selected_entries: Vec<DropdownTreeEntry> = self
+            .selected_indices
+            .iter()
+            .filter_map(|&idx| self.entries.get(idx).cloned())
+            .collect();
+
+        if !selected_entries.is_empty() {
+            cx.emit(DropdownTreeEvent::Selected {
+                entries: selected_entries,
+            });
+        }
+
         cx.notify();
     }
 
-    /// Get the currently selected entry
-    pub fn selected_entry(&self) -> Option<&DropdownTreeEntry> {
-        self.selected_ix.and_then(|ix| self.entries.get(ix))
+    /// Get all currently selected entries
+    pub fn selected_entries(&self) -> Vec<&DropdownTreeEntry> {
+        self.selected_indices
+            .iter()
+            .filter_map(|&ix| self.entries.get(ix))
+            .collect()
     }
 
     /// Check if an item is expanded
@@ -237,7 +259,7 @@ impl RenderOnce for DropdownTree {
                                 let depth = entry.depth();
                                 let is_folder = entry.is_folder();
                                 let is_expanded = state.is_expanded(&entry.item.id);
-                                let selected = Some(ix) == state.selected_ix;
+                                let selected = state.selected_indices.contains(&ix);
                                 Some((ix, entry.clone(), depth, is_folder, is_expanded, selected))
                             })
                             .collect()
@@ -290,9 +312,10 @@ impl RenderOnce for DropdownTree {
                             .flex_grow()
                             .cursor_pointer()
                             .child(label_element)
-                            .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                            .on_mouse_down(MouseButton::Left, move |event, _window, cx| {
+                                let shift_held = event.modifiers.shift;
                                 tree_state_for_label.update(cx, |state, cx| {
-                                    state.set_selected_index(Some(ix), cx);
+                                    state.select_index(ix, shift_held, cx);
                                 });
                                 cx.stop_propagation();
                             });

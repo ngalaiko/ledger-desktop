@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::tree::TreeItem;
@@ -9,7 +11,7 @@ use super::dropdown_tree::DropdownTreeEvent;
 use super::state::{LedgerState, StateUpdatedEvent};
 
 pub enum AccountsTreeEvent {
-    Selected { account: Account },
+    Selected { accounts: HashSet<Account> },
 }
 
 impl EventEmitter<AccountsTreeEvent> for AccountsTreeView {}
@@ -26,9 +28,12 @@ impl AccountsTreeView {
         cx.subscribe(
             &accounts_tree,
             |_this, _accounts_tree, event, cx| match event {
-                DropdownTreeEvent::Selected { entry } => {
-                    let account = Account::parse(entry.item().id.as_str());
-                    cx.emit(AccountsTreeEvent::Selected { account });
+                DropdownTreeEvent::Selected { entries } => {
+                    let accounts: HashSet<Account> = entries
+                        .iter()
+                        .map(|entry| Account::parse(entry.item().id.as_str()))
+                        .collect();
+                    cx.emit(AccountsTreeEvent::Selected { accounts });
                     cx.notify();
                 }
             },

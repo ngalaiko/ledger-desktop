@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::rc::Rc;
 
 #[allow(clippy::wildcard_imports)]
@@ -12,7 +13,7 @@ pub struct RegisterView {
     all_transactions: Vec<Transaction>,
     transaction_views: Vec<Entity<TransactionView>>,
     transaction_sizes: Rc<Vec<Size<Pixels>>>,
-    filter_account: Option<Account>,
+    filter_accounts: HashSet<Account>,
 }
 
 impl RegisterView {
@@ -52,20 +53,25 @@ impl RegisterView {
             all_transactions: vec![],
             transaction_views: vec![],
             transaction_sizes: Rc::new(vec![]),
-            filter_account: None,
+            filter_accounts: HashSet::new(),
         }
     }
 
     fn transaction_matches_filter(&self, transaction: &Transaction) -> bool {
-        match &self.filter_account {
-            None => true,
-            Some(filter) => transaction.postings.iter().any(|posting| {
+        // If no filters, show all transactions
+        if self.filter_accounts.is_empty() {
+            return true;
+        }
+
+        // Transaction matches if ANY posting matches ANY filter account (or is a child of it)
+        transaction.postings.iter().any(|posting| {
+            self.filter_accounts.iter().any(|filter| {
                 // Match if posting account equals filter or is a child of filter
                 &posting.account == filter
                     || (posting.account.segments.len() > filter.segments.len()
                         && posting.account.segments[..filter.segments.len()] == filter.segments[..])
-            }),
-        }
+            })
+        })
     }
 
     fn rebuild_filtered_views(&mut self, cx: &mut Context<Self>) {
@@ -83,8 +89,8 @@ impl RegisterView {
         }
     }
 
-    pub fn set_account_filter(&mut self, filter: Option<Account>, cx: &mut Context<Self>) {
-        self.filter_account = filter;
+    pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
+        self.filter_accounts = accounts;
         self.rebuild_filtered_views(cx);
         cx.notify();
     }

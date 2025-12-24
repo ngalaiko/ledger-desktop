@@ -21,9 +21,9 @@ impl LedgerFile {
         cx.subscribe(
             &accounts_tree,
             |this, _accounts_tree, event, cx| match event {
-                super::accounts_tree::AccountsTreeEvent::Selected { account } => {
+                super::accounts_tree::AccountsTreeEvent::Selected { accounts } => {
                     this.register_view.update(cx, |state, cx| {
-                        state.set_account_filter(Some(account.clone()), cx);
+                        state.set_account_filter(accounts.clone(), cx);
                     });
                 }
             },
