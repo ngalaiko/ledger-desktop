@@ -125,13 +125,13 @@ impl TreeNode {
         self.balance = Balance::new();
     }
 
-    pub fn add_account(&mut self, account: Account) -> &mut Self {
+    pub fn add_account(&mut self, account: &Account) {
         self.add_account_recursive(&account, 0)
     }
 
-    fn add_account_recursive(&mut self, account: &Account, depth: usize) -> &mut Self {
+    fn add_account_recursive(&mut self, account: &Account, depth: usize) {
         if depth >= account.segments.len() {
-            return self;
+            return;
         }
 
         let current = Account::from_segments(account.segments[..=depth].to_vec());
@@ -157,6 +157,39 @@ impl TreeNode {
         let child = &mut self.children[child_index];
 
         child.add_account_recursive(account, depth + 1)
+    }
+
+    pub fn add_amount_to_account(&mut self, account: &Account, amount: &Amount) {
+        self.add_amount_recursive(account, amount, 0);
+    }
+
+    fn add_amount_recursive(&mut self, account: &Account, amount: &Amount, depth: usize) -> bool {
+        if depth >= account.segments.len() {
+            return false;
+        }
+
+        let current = Account::from_segments(account.segments[..=depth].to_vec());
+
+        // Find the child node
+        if let Some(child) = self
+            .children
+            .iter_mut()
+            .find(|child| child.account.eq(&current))
+        {
+            // If this is the target account, add the amount
+            if child.account.eq(account) {
+                child.balance.add_amount(amount.clone());
+                return true;
+            }
+
+            // Otherwise, recurse to children and if found, add to this node's balance too
+            if child.add_amount_recursive(account, amount, depth + 1) {
+                child.balance.add_amount(amount.clone());
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -194,7 +227,7 @@ mod tests {
     fn test_tree_single_account() {
         let mut tree = TreeNode::new();
         let account = Account::parse("assets:bank:checking");
-        tree.add_account(account);
+        tree.add_account(&account);
 
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].account, Account::parse("assets"));
@@ -213,10 +246,10 @@ mod tests {
     #[test]
     fn test_tree_multiple_accounts() {
         let mut tree = TreeNode::new();
-        tree.add_account(Account::parse("assets:bank:checking"));
-        tree.add_account(Account::parse("assets:bank:savings"));
-        tree.add_account(Account::parse("assets:cash"));
-        tree.add_account(Account::parse("expenses:groceries"));
+        tree.add_account(&Account::parse("assets:bank:checking"));
+        tree.add_account(&Account::parse("assets:bank:savings"));
+        tree.add_account(&Account::parse("assets:cash"));
+        tree.add_account(&Account::parse("expenses:groceries"));
 
         assert_eq!(tree.children.len(), 2); // assets and expenses
 
@@ -227,5 +260,126 @@ mod tests {
         let bank = &assets.children[0];
         assert_eq!(bank.account, Account::parse("assets:bank"));
         assert_eq!(bank.children.len(), 2); // checking and savings
+    }
+
+    #[test]
+    fn test_subtree_balance_single_account() {
+        use crate::transactions::Amount;
+        use rust_decimal::Decimal;
+
+        let mut tree = TreeNode::new();
+        tree.add_account(&Account::parse("assets:bank:checking"));
+
+        let amount = Amount {
+            value: Decimal::new(10000, 2), // 100.00
+            commodity: "USD".to_string(),
+        };
+
+        tree.add_amount_to_account(&Account::parse("assets:bank:checking"), &amount);
+
+        // Check that the leaf account has the balance
+        let assets = &tree.children[0];
+        let bank = &assets.children[0];
+        let checking = &bank.children[0];
+        assert_eq!(checking.balance.to_string(), "100.00 USD");
+
+        // Check that all parent accounts have the same balance (subtree total)
+        assert_eq!(bank.balance.to_string(), "100.00 USD");
+        assert_eq!(assets.balance.to_string(), "100.00 USD");
+    }
+
+    #[test]
+    fn test_subtree_balance_multiple_accounts() {
+        use crate::transactions::Amount;
+        use rust_decimal::Decimal;
+
+        let mut tree = TreeNode::new();
+        tree.add_account(&Account::parse("assets:bank:checking"));
+        tree.add_account(&Account::parse("assets:bank:savings"));
+        tree.add_account(&Account::parse("assets:cash"));
+
+        // Add amounts to different accounts
+        tree.add_amount_to_account(
+            &Account::parse("assets:bank:checking"),
+            &Amount {
+                value: Decimal::new(10000, 2), // 100.00
+                commodity: "USD".to_string(),
+            },
+        );
+
+        tree.add_amount_to_account(
+            &Account::parse("assets:bank:savings"),
+            &Amount {
+                value: Decimal::new(20000, 2), // 200.00
+                commodity: "USD".to_string(),
+            },
+        );
+
+        tree.add_amount_to_account(
+            &Account::parse("assets:cash"),
+            &Amount {
+                value: Decimal::new(5000, 2), // 50.00
+                commodity: "USD".to_string(),
+            },
+        );
+
+        let assets = &tree.children[0];
+        let bank = &assets.children[0];
+        let checking = &bank.children[0];
+        let savings = &bank.children[1];
+        let cash = &assets.children[1];
+
+        // Check individual account balances
+        assert_eq!(checking.balance.to_string(), "100.00 USD");
+        assert_eq!(savings.balance.to_string(), "200.00 USD");
+        assert_eq!(cash.balance.to_string(), "50.00 USD");
+
+        // Check that bank account has the sum of checking and savings
+        assert_eq!(bank.balance.to_string(), "300.00 USD");
+
+        // Check that assets account has the sum of all children
+        assert_eq!(assets.balance.to_string(), "350.00 USD");
+    }
+
+    #[test]
+    fn test_subtree_balance_multiple_commodities() {
+        use crate::transactions::Amount;
+        use rust_decimal::Decimal;
+
+        let mut tree = TreeNode::new();
+        tree.add_account(&Account::parse("assets:bank:checking"));
+        tree.add_account(&Account::parse("assets:cash"));
+
+        // Add USD to checking
+        tree.add_amount_to_account(
+            &Account::parse("assets:bank:checking"),
+            &Amount {
+                value: Decimal::new(10000, 2), // 100.00
+                commodity: "USD".to_string(),
+            },
+        );
+
+        // Add EUR to cash
+        tree.add_amount_to_account(
+            &Account::parse("assets:cash"),
+            &Amount {
+                value: Decimal::new(5000, 2), // 50.00
+                commodity: "EUR".to_string(),
+            },
+        );
+
+        let assets = &tree.children[0];
+        let bank = &assets.children[0];
+        let checking = &bank.children[0];
+        let cash = &assets.children[1];
+
+        // Check individual account balances
+        assert_eq!(checking.balance.to_string(), "100.00 USD");
+        assert_eq!(cash.balance.to_string(), "50.00 EUR");
+
+        // Check that parent accounts track both commodities
+        assert_eq!(bank.balance.to_string(), "100.00 USD");
+        let assets_balance = assets.balance.to_string();
+        assert!(assets_balance.contains("100.00 USD") && assets_balance.contains("50.00 EUR"));
     }
 }

@@ -50,8 +50,9 @@ impl State {
                     Some(Ok(transaction)) => {
                         this.update(cx, |this, _cx| {
                             for posting in transaction.postings.iter() {
-                                let node = this.accounts.add_account(posting.account.clone());
-                                node.balance.add_amount(posting.amount.clone());
+                                this.accounts.add_account(&posting.account);
+                                this.accounts
+                                    .add_amount_to_account(&posting.account, &posting.amount);
                             }
 
                             this.transactions.push(transaction.clone());

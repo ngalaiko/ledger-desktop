@@ -57,8 +57,7 @@ fn build_account_tree(node: &TreeNode) -> Vec<TreeItem> {
     let mut items = Vec::new();
 
     for child in &node.children {
-        let label = format!("{} ({})", child.account.name(), child.balance.to_string());
-        let mut item = TreeItem::new(child.account.to_string(), label);
+        let mut item = TreeItem::new(child.account.to_string(), child.account.name().to_string());
 
         if !child.children.is_empty() {
             item = item.expanded(false);
