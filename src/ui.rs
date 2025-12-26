@@ -2,10 +2,11 @@
 use gpui::*;
 use gpui_component::{v_flex, TitleBar};
 
-pub mod accounts_tree;
-pub mod file;
-pub mod state;
-pub mod transactions_register;
+mod accounts_tree;
+mod balance_chart;
+mod file;
+mod state;
+mod transactions_register;
 
 pub struct Window {
     file: Entity<file::LedgerFile>,
