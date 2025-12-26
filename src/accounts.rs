@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use rust_decimal::Decimal;
+use fastnum::D128;
 
 use crate::transactions::CurrencyAmount;
 
@@ -97,7 +97,7 @@ impl Balance {
             .by_commodity
             .entry(amount.commodity.clone())
             .or_insert(CurrencyAmount {
-                value: Decimal::new(0, 0),
+                value: D128::ZERO,
                 commodity: amount.commodity.clone(),
             });
         entry.value += amount.value;
@@ -271,13 +271,13 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_single_account() {
-        use rust_decimal::Decimal;
+        use fastnum::D128;
 
         let mut tree = TreeNode::new();
         tree.add_account(&Account::parse("assets:bank:checking"));
 
         let amount = CurrencyAmount {
-            value: Decimal::new(10000, 2), // 100.00
+            value: "100.00".parse::<D128>().unwrap(), // 100.00
             commodity: "USD".to_string(),
         };
 
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_multiple_accounts() {
-        use rust_decimal::Decimal;
+        use fastnum::D128;
 
         let mut tree = TreeNode::new();
         tree.add_account(&Account::parse("assets:bank:checking"));
@@ -307,7 +307,7 @@ mod tests {
         tree.add_amount_to_account(
             &Account::parse("assets:bank:checking"),
             &CurrencyAmount {
-                value: Decimal::new(10000, 2), // 100.00
+                value: "100.00".parse::<D128>().unwrap(), // 100.00
                 commodity: "USD".to_string(),
             },
         );
@@ -315,7 +315,7 @@ mod tests {
         tree.add_amount_to_account(
             &Account::parse("assets:bank:savings"),
             &CurrencyAmount {
-                value: Decimal::new(20000, 2), // 200.00
+                value: "200.00".parse::<D128>().unwrap(), // 200.00
                 commodity: "USD".to_string(),
             },
         );
@@ -323,7 +323,7 @@ mod tests {
         tree.add_amount_to_account(
             &Account::parse("assets:cash"),
             &CurrencyAmount {
-                value: Decimal::new(5000, 2), // 50.00
+                value: "50.00".parse::<D128>().unwrap(), // 50.00
                 commodity: "USD".to_string(),
             },
         );
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_multiple_commodities() {
-        use rust_decimal::Decimal;
+        use fastnum::D128;
 
         let mut tree = TreeNode::new();
         tree.add_account(&Account::parse("assets:bank:checking"));
@@ -358,7 +358,7 @@ mod tests {
         tree.add_amount_to_account(
             &Account::parse("assets:bank:checking"),
             &CurrencyAmount {
-                value: Decimal::new(10000, 2), // 100.00
+                value: "100.00".parse::<D128>().unwrap(), // 100.00
                 commodity: "USD".to_string(),
             },
         );
@@ -367,7 +367,7 @@ mod tests {
         tree.add_amount_to_account(
             &Account::parse("assets:cash"),
             &CurrencyAmount {
-                value: Decimal::new(5000, 2), // 50.00
+                value: "50.00".parse::<D128>().unwrap(), // 50.00
                 commodity: "EUR".to_string(),
             },
         );

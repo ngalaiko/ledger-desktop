@@ -10,7 +10,7 @@ license = "GPL-3.0-only"
 [dependencies]
 thiserror = "2.0"
 chrono = "0.4"
-rust_decimal = "1.39"
+fastnum = "0.7"
 
 futures-lite = "2.6"
 async-process = "2.5"

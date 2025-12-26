@@ -2,7 +2,7 @@ use core::fmt;
 use std::fmt::Debug;
 use std::path;
 
-use rust_decimal::Decimal;
+use fastnum::D128;
 
 use crate::accounts::Account;
 use crate::sexpr;
@@ -121,15 +121,15 @@ impl Posting {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ParseAmounError {
-    #[error(transparent)]
-    InvalidDecimal(rust_decimal::Error),
+    #[error("invalid decimal: {0}")]
+    InvalidDecimal(String),
     #[error("invalid amount format")]
     InvalidFormat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrencyAmount {
-    pub value: Decimal,
+    pub value: D128,
     pub commodity: String,
 }
 
@@ -148,7 +148,8 @@ impl CurrencyAmount {
         }
         let value = parts.remove(0);
         let value = value.replace(",", ""); // Remove commas for thousands separators
-        let value = Decimal::from_str_exact(&value).map_err(ParseAmounError::InvalidDecimal)?;
+
+        let value = value.parse::<D128>().map_err(|e| ParseAmounError::InvalidDecimal(e.to_string()))?;
         if parts.is_empty() {
             return Ok(CurrencyAmount {
                 value,
@@ -186,8 +187,9 @@ impl Amount {
         let price = if let Some(price_start) = price_start {
             let price_end = amount_str.find('}').ok_or(ParseAmounError::InvalidFormat)?;
             let price_str = &amount_str[price_start + 1..price_end].trim();
-            let price = CurrencyAmount::parse(price_str).ok();
-            Ok(price)
+            let price =
+                CurrencyAmount::parse(price_str).map_err(|_| ParseAmounError::InvalidFormat)?;
+            Ok(Some(price))
         } else {
             Ok(None)
         }?;
@@ -264,7 +266,7 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(
             amount.value.value,
-            Decimal::from_str_exact("-1020.48").unwrap()
+            "-1020.48".parse::<D128>().unwrap()
         );
         assert_eq!(amount.value.commodity, "");
         assert!(amount.price.is_none());
@@ -277,7 +279,7 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(
             amount.value.value,
-            Decimal::from_str_exact("-1020.48").unwrap()
+            "-1020.48".parse::<D128>().unwrap()
         );
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_none());
@@ -290,7 +292,7 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(
             amount.value.value,
-            Decimal::from_str_exact("-20.48").unwrap()
+            "-20.48".parse::<D128>().unwrap()
         );
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_none());
@@ -303,18 +305,40 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(
             amount.value.value,
-            Decimal::from_str_exact("-20.48").unwrap()
+            "-20.48".parse::<D128>().unwrap()
         );
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_some());
         let price = amount.price.as_ref().unwrap();
         assert_eq!(
             price.value,
-            Decimal::from_str_exact("3.6041025641").unwrap()
+            "3.6041025641".parse::<D128>().unwrap()
         );
         assert_eq!(price.commodity, "SEK");
         assert!(amount.date.is_some());
         let date = amount.date.as_ref().unwrap();
         assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2025, 12, 3).unwrap());
+    }
+
+    #[test]
+    fn test_parse_amount_long_price() {
+        let amount_str = "194.21240000 USDT {9.525653356840242950501615756769 SEK} [2025/09/17]";
+        let amount = Amount::parse(amount_str).expect("should parse amount");
+        assert_eq!(
+            amount.value.value,
+            "194.21240000".parse::<D128>().unwrap()
+        );
+        assert_eq!(amount.value.commodity, "USDT");
+        assert!(amount.price.is_some());
+        let price = amount.price.as_ref().unwrap();
+        // D128 supports up to ~38 decimal digits, so the full 30-digit precision is preserved
+        assert_eq!(
+            price.value,
+            "9.525653356840242950501615756769".parse::<D128>().unwrap()
+        );
+        assert_eq!(price.commodity, "SEK");
+        assert!(amount.date.is_some());
+        let date = amount.date.as_ref().unwrap();
+        assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2025, 9, 17).unwrap());
     }
 }
