@@ -15,11 +15,16 @@ use super::state::State;
 pub struct RegisterView {
     state: Entity<State>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
-    filter_accounts: HashSet<Account>,
+    account_filter: Option<Account>,
 }
 
 impl RegisterView {
-    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: Entity<State>,
+        account_filter: Option<Account>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
@@ -31,7 +36,7 @@ impl RegisterView {
         Self {
             state,
             table_state,
-            filter_accounts: HashSet::new(),
+            account_filter,
         }
     }
 
@@ -42,16 +47,12 @@ impl RegisterView {
             .transactions
             .iter()
             .filter_map(|transaction| {
-                if self.filter_accounts.is_empty() {
-                    Some(transaction.clone())
-                } else {
+                if let Some(account) = &self.account_filter {
                     let matching_postings = transaction
                         .postings
                         .iter()
                         .filter(|posting| {
-                            self.filter_accounts.iter().any(|filter| {
-                                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
-                            })
+                            posting.account.eq(&account) || account.is_parent_of(&posting.account)
                         })
                         .collect::<Vec<_>>();
 
@@ -64,6 +65,8 @@ impl RegisterView {
                             ..transaction.clone()
                         })
                     }
+                } else {
+                    None
                 }
             })
             .collect::<Vec<_>>();
@@ -74,8 +77,8 @@ impl RegisterView {
         });
     }
 
-    pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
-        self.filter_accounts = accounts;
+    pub fn set_account_filter(&mut self, filter: Option<Account>, cx: &mut Context<Self>) {
+        self.account_filter = filter;
         self.rebuild_filtered_views(cx);
     }
 }
