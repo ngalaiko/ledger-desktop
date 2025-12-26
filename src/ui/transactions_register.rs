@@ -135,7 +135,12 @@ impl TableDelegate for TransactionTableDelegate {
         &self.columns[col_ix]
     }
 
-    fn render_tr(&self, row_ix: usize, _window: &mut Window, _cx: &mut App) -> Stateful<Div> {
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
         // Get the transaction index for this row to determine background color
         let bg_color = if let Some((tx_ix, _, _)) = self.get_row_data(row_ix) {
             if tx_ix % 2 == 0 {
@@ -151,11 +156,11 @@ impl TableDelegate for TransactionTableDelegate {
     }
 
     fn render_td(
-        &self,
+        &mut self,
         row_ix: usize,
         col_ix: usize,
         _window: &mut Window,
-        _cx: &mut App,
+        _cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         if let Some((tx_ix, posting_ix, is_first)) = self.get_row_data(row_ix) {
             let transaction = &self.transactions[tx_ix];
