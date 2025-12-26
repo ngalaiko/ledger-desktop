@@ -1,2 +1,3 @@
-- change the only screen to have input, and allow it to just run commands towards ledger
-- scroll to the last visible output line
+- handle currency conversion
+- show account balance
+- show account balance chart

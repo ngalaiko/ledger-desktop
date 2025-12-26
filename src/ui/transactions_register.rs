@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use chrono::{DateTime, Local};
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
