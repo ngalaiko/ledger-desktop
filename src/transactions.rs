@@ -1,6 +1,6 @@
 use core::fmt;
+use std::fmt::Debug;
 use std::path;
-use std::time;
 
 use rust_decimal::Decimal;
 
@@ -9,6 +9,8 @@ use crate::sexpr;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ParseTransactionError {
+    #[error(transparent)]
+    ParseDateError(chrono::ParseError),
     #[error("expected a list of {0}, got {1}")]
     UnexpectedLength(usize, usize),
     #[error("expected type {1} at position {0}")]
@@ -21,7 +23,7 @@ pub enum ParseTransactionError {
 pub struct Transaction {
     pub file: path::PathBuf,
     pub line: i64,
-    pub time: time::SystemTime,
+    pub time: chrono::NaiveDate,
     pub description: String,
     pub postings: Vec<Posting>,
 }
@@ -37,7 +39,7 @@ impl Transaction {
         let sexpr::Value::I64(line) = value[1].to_owned() else {
             return Err(ParseTransactionError::UnexpectedType(1, value[1].clone()));
         };
-        let sexpr::Value::I64(epoch_seconds) = value[2].to_owned() else {
+        let sexpr::Value::String(date) = value[2].to_owned() else {
             return Err(ParseTransactionError::UnexpectedType(2, value[2].clone()));
         };
         let sexpr::Value::String(description) = value[4].to_owned() else {
@@ -60,7 +62,8 @@ impl Transaction {
         Ok(Transaction {
             file: path::PathBuf::from(file),
             line,
-            time: time::UNIX_EPOCH + time::Duration::from_secs(epoch_seconds as u64),
+            time: chrono::NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d")
+                .map_err(ParseTransactionError::ParseDateError)?,
             description,
             postings,
         })
@@ -125,19 +128,20 @@ pub enum ParseAmounError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Amount {
+pub struct CurrencyAmount {
     pub value: Decimal,
     pub commodity: String,
 }
 
-impl fmt::Display for Amount {
+impl fmt::Display for CurrencyAmount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.value, self.commodity)
     }
 }
 
-impl Amount {
+impl CurrencyAmount {
     pub fn parse(amount_str: &str) -> Result<Self, ParseAmounError> {
+        let amount_str = amount_str.trim();
         let mut parts = amount_str.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
             return Err(ParseAmounError::InvalidFormat);
@@ -146,13 +150,66 @@ impl Amount {
         let value = value.replace(",", ""); // Remove commas for thousands separators
         let value = Decimal::from_str_exact(&value).map_err(ParseAmounError::InvalidDecimal)?;
         if parts.is_empty() {
-            return Ok(Amount {
+            return Ok(CurrencyAmount {
                 value,
                 commodity: "".to_string(),
             });
         }
-        let commodity = parts.remove(0).to_string();
-        Ok(Amount { value, commodity })
+        let commodity = parts.join(" ").trim_matches(|c| c == '"').to_string();
+        Ok(CurrencyAmount { value, commodity })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Amount {
+    pub value: CurrencyAmount,
+    pub price: Option<CurrencyAmount>,
+    pub date: Option<chrono::NaiveDate>,
+}
+
+impl fmt::Display for Amount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)?;
+        if let Some(price) = &self.price {
+            write!(f, " {{{}}}", price)?;
+        }
+        if let Some(date) = &self.date {
+            write!(f, " [{}]", date.format("%Y/%m/%d"))?;
+        }
+        Ok(())
+    }
+}
+
+impl Amount {
+    pub fn parse(amount_str: &str) -> Result<Self, ParseAmounError> {
+        let price_start = amount_str.find('{');
+        let price = if let Some(price_start) = price_start {
+            let price_end = amount_str.find('}').ok_or(ParseAmounError::InvalidFormat)?;
+            let price_str = &amount_str[price_start + 1..price_end].trim();
+            let price = CurrencyAmount::parse(price_str).ok();
+            Ok(price)
+        } else {
+            Ok(None)
+        }?;
+        let date_start = amount_str.find('[');
+        let date = if let Some(date_start) = date_start {
+            let date_end = amount_str.find(']').ok_or(ParseAmounError::InvalidFormat)?;
+            let date_str = &amount_str[date_start + 1..date_end].trim();
+            let date = chrono::NaiveDate::parse_from_str(date_str, "%Y/%m/%d")
+                .map_err(|_| ParseAmounError::InvalidFormat)?;
+            Ok(Some(date))
+        } else {
+            Ok(None)
+        }?;
+        let amount_str = if let Some(price_start) = price_start {
+            &amount_str[..price_start]
+        } else if let Some(date_start) = date_start {
+            &amount_str[..date_start]
+        } else {
+            amount_str
+        };
+        let value = CurrencyAmount::parse(amount_str)?;
+        Ok(Amount { value, price, date })
     }
 }
 
@@ -176,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_parse_transaction() {
-        let sexpr_str  = "(\"/Users/nikita.galaiko/Developer/finance/transactions/2025.ledger\" 8561 1765666800 nil \"Kop\"
+        let sexpr_str  = "(\"/Users/nikita.galaiko/Developer/finance/transactions/2025.ledger\" 8561 \"2025-12-13\" nil \"Kop\"
   (8562 \"expenses:Pending\" \"148.95 SEK\" pending \" shared:: 35%\"))";
         let sexpr_value = sexpr::parse_sexpr(sexpr_str).expect("should sexpr");
         let transaction = Transaction::from_sexpr(&sexpr_value).expect("should parse transaction");
@@ -188,7 +245,7 @@ mod tests {
         assert_eq!(transaction.description, "Kop");
         assert_eq!(
             transaction.time,
-            time::UNIX_EPOCH + time::Duration::from_secs(1765666800),
+            chrono::NaiveDate::from_ymd_opt(2025, 12, 13).unwrap()
         );
         assert_eq!(transaction.postings.len(), 1);
         let posting = &transaction.postings[0];
@@ -202,34 +259,62 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_amount_no_commodity() {
+    fn test_parse_currency_amount_no_commodity() {
         let amount_str = "-1,020.48";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(amount.value, Decimal::from_str_exact("-1020.48").unwrap());
-        assert_eq!(amount.commodity, "");
+        assert_eq!(
+            amount.value.value,
+            Decimal::from_str_exact("-1020.48").unwrap()
+        );
+        assert_eq!(amount.value.commodity, "");
+        assert!(amount.price.is_none());
+        assert!(amount.date.is_none());
     }
 
     #[test]
-    fn test_parse_amount_thousand() {
+    fn test_parse_currency_amount_thousand() {
         let amount_str = "-1,020.48 GEL";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(amount.value, Decimal::from_str_exact("-1020.48").unwrap());
-        assert_eq!(amount.commodity, "GEL");
+        assert_eq!(
+            amount.value.value,
+            Decimal::from_str_exact("-1020.48").unwrap()
+        );
+        assert_eq!(amount.value.commodity, "GEL");
+        assert!(amount.price.is_none());
+        assert!(amount.date.is_none());
     }
 
     #[test]
-    fn test_parse_amount_simple() {
+    fn test_parse_currency_amount_simple() {
         let amount_str = "-20.48 GEL";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(amount.value, Decimal::from_str_exact("-20.48").unwrap());
-        assert_eq!(amount.commodity, "GEL");
+        assert_eq!(
+            amount.value.value,
+            Decimal::from_str_exact("-20.48").unwrap()
+        );
+        assert_eq!(amount.value.commodity, "GEL");
+        assert!(amount.price.is_none());
+        assert!(amount.date.is_none());
     }
 
     #[test]
     fn test_parse_amount_priced() {
         let amount_str = "-20.48 GEL {3.6041025641 SEK} [2025/12/03]";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(amount.value, Decimal::from_str_exact("-20.48").unwrap());
-        assert_eq!(amount.commodity, "GEL");
+        assert_eq!(
+            amount.value.value,
+            Decimal::from_str_exact("-20.48").unwrap()
+        );
+        assert_eq!(amount.value.commodity, "GEL");
+        assert!(amount.price.is_some());
+        let price = amount.price.as_ref().unwrap();
+        assert_eq!(
+            price.value,
+            Decimal::from_str_exact("3.6041025641").unwrap()
+        );
+        assert_eq!(price.commodity, "SEK");
+        assert!(amount.date.is_some());
+        let date = amount.date.as_ref().unwrap();
+        assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2025, 12, 3).unwrap());
     }
 }

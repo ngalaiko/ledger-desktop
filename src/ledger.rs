@@ -73,7 +73,7 @@ impl LedgerHandle {
     }
 
     pub async fn transactions(&self) -> Result<TransactionStream<LineStream>, ChannelClosed> {
-        let event_rx = self.send("lisp --lisp-date-format seconds").await?;
+        let event_rx = self.send("lisp --lisp-date-format %Y-%m-%d").await?;
         let line_stream = LineStream::from_events(event_rx);
         Ok(line_stream.sexpr().transactions())
     }

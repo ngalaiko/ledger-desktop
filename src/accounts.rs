@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 
-use crate::transactions::Amount;
+use crate::transactions::CurrencyAmount;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Account {
@@ -72,7 +72,7 @@ impl Account {
 
 #[derive(Debug)]
 pub struct Balance {
-    by_commodity: HashMap<String, Amount>,
+    by_commodity: HashMap<String, CurrencyAmount>,
 }
 
 impl fmt::Display for Balance {
@@ -92,11 +92,11 @@ impl Balance {
         }
     }
 
-    pub fn add_amount(&mut self, amount: Amount) {
+    pub fn add_amount(&mut self, amount: CurrencyAmount) {
         let entry = self
             .by_commodity
             .entry(amount.commodity.clone())
-            .or_insert(Amount {
+            .or_insert(CurrencyAmount {
                 value: Decimal::new(0, 0),
                 commodity: amount.commodity.clone(),
             });
@@ -159,11 +159,16 @@ impl TreeNode {
         child.add_account_recursive(account, depth + 1)
     }
 
-    pub fn add_amount_to_account(&mut self, account: &Account, amount: &Amount) {
+    pub fn add_amount_to_account(&mut self, account: &Account, amount: &CurrencyAmount) {
         self.add_amount_recursive(account, amount, 0);
     }
 
-    fn add_amount_recursive(&mut self, account: &Account, amount: &Amount, depth: usize) -> bool {
+    fn add_amount_recursive(
+        &mut self,
+        account: &Account,
+        amount: &CurrencyAmount,
+        depth: usize,
+    ) -> bool {
         if depth >= account.segments.len() {
             return false;
         }
@@ -195,6 +200,8 @@ impl TreeNode {
 
 #[cfg(test)]
 mod tests {
+    use crate::transactions::CurrencyAmount;
+
     use super::*;
 
     #[test]
@@ -264,13 +271,12 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_single_account() {
-        use crate::transactions::Amount;
         use rust_decimal::Decimal;
 
         let mut tree = TreeNode::new();
         tree.add_account(&Account::parse("assets:bank:checking"));
 
-        let amount = Amount {
+        let amount = CurrencyAmount {
             value: Decimal::new(10000, 2), // 100.00
             commodity: "USD".to_string(),
         };
@@ -290,7 +296,6 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_multiple_accounts() {
-        use crate::transactions::Amount;
         use rust_decimal::Decimal;
 
         let mut tree = TreeNode::new();
@@ -301,7 +306,7 @@ mod tests {
         // Add amounts to different accounts
         tree.add_amount_to_account(
             &Account::parse("assets:bank:checking"),
-            &Amount {
+            &CurrencyAmount {
                 value: Decimal::new(10000, 2), // 100.00
                 commodity: "USD".to_string(),
             },
@@ -309,7 +314,7 @@ mod tests {
 
         tree.add_amount_to_account(
             &Account::parse("assets:bank:savings"),
-            &Amount {
+            &CurrencyAmount {
                 value: Decimal::new(20000, 2), // 200.00
                 commodity: "USD".to_string(),
             },
@@ -317,7 +322,7 @@ mod tests {
 
         tree.add_amount_to_account(
             &Account::parse("assets:cash"),
-            &Amount {
+            &CurrencyAmount {
                 value: Decimal::new(5000, 2), // 50.00
                 commodity: "USD".to_string(),
             },
@@ -343,7 +348,6 @@ mod tests {
 
     #[test]
     fn test_subtree_balance_multiple_commodities() {
-        use crate::transactions::Amount;
         use rust_decimal::Decimal;
 
         let mut tree = TreeNode::new();
@@ -353,7 +357,7 @@ mod tests {
         // Add USD to checking
         tree.add_amount_to_account(
             &Account::parse("assets:bank:checking"),
-            &Amount {
+            &CurrencyAmount {
                 value: Decimal::new(10000, 2), // 100.00
                 commodity: "USD".to_string(),
             },
@@ -362,7 +366,7 @@ mod tests {
         // Add EUR to cash
         tree.add_amount_to_account(
             &Account::parse("assets:cash"),
-            &Amount {
+            &CurrencyAmount {
                 value: Decimal::new(5000, 2), // 50.00
                 commodity: "EUR".to_string(),
             },

@@ -1,4 +1,3 @@
-use chrono::{DateTime, Local};
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
@@ -171,8 +170,7 @@ impl TableDelegate for TransactionTableDelegate {
                 0 => {
                     // Date
                     if is_first {
-                        let datetime: DateTime<Local> = transaction.time.into();
-                        div().child(datetime.format("%Y-%m-%d").to_string())
+                        div().child(transaction.time.format("%Y-%m-%d").to_string())
                     } else {
                         div() // Empty for subsequent postings
                     }

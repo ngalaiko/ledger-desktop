@@ -41,6 +41,9 @@ impl State {
                     this.error = Some("Failed to start ledger process".into());
                     cx.notify();
                 })
+                .map_err(|e| {
+                    eprintln!("Error updating state with error: {}", e);
+                })
                 .ok();
                 return;
             };
@@ -52,16 +55,22 @@ impl State {
                             for posting in transaction.postings.iter() {
                                 this.accounts.add_account(&posting.account);
                                 this.accounts
-                                    .add_amount_to_account(&posting.account, &posting.amount);
+                                    .add_amount_to_account(&posting.account, &posting.amount.value);
                             }
 
                             this.transactions.push(transaction.clone());
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error updating state: {}", e);
                         })
                         .ok();
                     }
                     None => {
                         this.update(cx, |_this, cx| {
                             cx.notify();
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error finalizing state: {}", e);
                         })
                         .ok();
                         break;
@@ -71,6 +80,9 @@ impl State {
                         this.update(cx, |this, cx| {
                             this.error = Some(format!("Error parsing transaction: {}", e));
                             cx.notify();
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error updating state with error: {}", e);
                         })
                         .ok();
                         break;
