@@ -1,8 +1,9 @@
+use std::collections::HashSet;
+
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
     h_flex,
-    resizable::v_resizable,
     table::{Column, Table, TableDelegate, TableState},
     v_flex,
 };
@@ -18,16 +19,11 @@ pub struct RegisterView {
     state: Entity<State>,
     chart_state: Entity<BalanceChart>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
-    account_filter: Option<Account>,
+    filter_accounts: HashSet<Account>,
 }
 
 impl RegisterView {
-    pub fn new(
-        state: Entity<State>,
-        account_filter: Option<Account>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
         let chart_state = cx.new(|_cx| BalanceChart::new());
@@ -41,7 +37,7 @@ impl RegisterView {
             state,
             chart_state,
             table_state,
-            account_filter,
+            filter_accounts: HashSet::new(),
         }
     }
 
@@ -52,12 +48,16 @@ impl RegisterView {
             .transactions
             .iter()
             .filter_map(|transaction| {
-                if let Some(account) = &self.account_filter {
+                if self.filter_accounts.is_empty() {
+                    Some(transaction.clone())
+                } else {
                     let matching_postings = transaction
                         .postings
                         .iter()
                         .filter(|posting| {
-                            posting.account.eq(&account) || account.is_parent_of(&posting.account)
+                            self.filter_accounts.iter().any(|filter| {
+                                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
+                            })
                         })
                         .collect::<Vec<_>>();
 
@@ -70,8 +70,6 @@ impl RegisterView {
                             ..transaction.clone()
                         })
                     }
-                } else {
-                    None
                 }
             })
             .collect::<Vec<_>>();
@@ -86,8 +84,8 @@ impl RegisterView {
         });
     }
 
-    pub fn set_account_filter(&mut self, filter: Option<Account>, cx: &mut Context<Self>) {
-        self.account_filter = filter;
+    pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
+        self.filter_accounts = accounts;
         self.rebuild_visible_transactions(cx);
     }
 }

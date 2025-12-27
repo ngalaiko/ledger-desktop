@@ -1,7 +1,10 @@
+use std::collections::HashSet;
+
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
-    h_flex,
+    checkbox::{self, Checkbox},
+    h_flex, label,
     list::ListItem,
     tree::{tree, TreeItem, TreeState},
     IconName,
@@ -13,7 +16,7 @@ use super::state::State;
 
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
-    pub selected_account: Option<Account>,
+    selected_accounts: HashSet<Account>,
 }
 
 impl AccountsTreeView {
@@ -32,12 +35,24 @@ impl AccountsTreeView {
 
         Self {
             tree_state,
-            selected_account: None,
+            selected_accounts: HashSet::new(),
         }
     }
 
-    fn handle_selection(&mut self, item: TreeItem, cx: &mut Context<Self>) {
-        self.selected_account = Some(Account::parse(&item.id));
+    pub fn selected_accounts(&self) -> &HashSet<Account> {
+        &self.selected_accounts
+    }
+
+    fn is_selected(&self, account: &Account) -> bool {
+        self.selected_accounts.contains(account)
+    }
+
+    fn toggle_selection(&mut self, account: Account, cx: &mut Context<Self>) {
+        if self.selected_accounts.contains(&account) {
+            self.selected_accounts.remove(&account);
+        } else {
+            self.selected_accounts.insert(account);
+        }
         cx.notify();
     }
 }
@@ -65,38 +80,45 @@ impl Render for AccountsTreeView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         tree(&self.tree_state, {
             let view = cx.entity();
-            move |ix, entry, selected, _window, cx| {
-                view.update(cx, |_this, cx| {
+            move |ix, entry, _selected, _window, cx| {
+                view.update(cx, |this, cx| {
                     let item = entry.item();
-                    let icon = if !entry.is_folder() {
-                        None
+                    let account = Account::parse(&item.id);
+                    let is_multi_selected = this.is_selected(&account);
+
+                    let with_checkbox = div()
+                        .flex()
+                        .size_full()
+                        .justify_between()
+                        .items_center()
+                        .child(item.label.clone())
+                        .child(Checkbox::new(item.id.clone()).checked(is_multi_selected));
+
+                    let with_icon = if !entry.is_folder() {
+                        h_flex().gap_2().pl(px(24.)).child(with_checkbox)
                     } else if entry.is_expanded() {
-                        Some(IconName::ChevronDown)
+                        h_flex()
+                            .gap_2()
+                            .child(IconName::ChevronDown)
+                            .child(with_checkbox)
                     } else {
-                        Some(IconName::ChevronRight)
+                        h_flex()
+                            .gap_2()
+                            .child(IconName::ChevronRight)
+                            .child(with_checkbox)
                     };
 
-                    let label = if let Some(icon) = icon {
-                        h_flex().gap_2().child(icon).child(item.label.clone())
-                    } else {
-                        div().pl(px(24.)).child(item.label.clone())
-                    };
-
-                    let list_item = ListItem::new(ix)
-                        .selected(selected)
+                    ListItem::new(ix)
+                        .selected(is_multi_selected)
                         .pl(px(16.) * entry.depth() + px(12.))
-                        .child(label);
-
-                    if entry.is_folder() {
-                        list_item
-                    } else {
-                        list_item.on_click(cx.listener({
+                        .child(with_icon)
+                        .on_click(cx.listener({
                             let item = entry.item().clone();
                             move |this, _, _, cx| {
-                                this.handle_selection(item.clone(), cx);
+                                let account = Account::parse(&item.id);
+                                this.toggle_selection(account, cx);
                             }
                         }))
-                    }
                 })
             }
         })
