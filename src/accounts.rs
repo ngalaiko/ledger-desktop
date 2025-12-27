@@ -70,7 +70,7 @@ impl Account {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Balance {
     by_commodity: HashMap<String, CurrencyAmount>,
 }
@@ -104,6 +104,7 @@ impl Balance {
     }
 }
 
+#[derive(Clone)]
 pub struct TreeNode {
     pub account: Account,
     pub balance: Balance,

@@ -4,6 +4,7 @@ use gpui_component::{v_flex, TitleBar};
 
 mod accounts_tree;
 mod balance_chart;
+mod components;
 mod file;
 mod state;
 mod transactions_register;
