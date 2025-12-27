@@ -89,10 +89,13 @@ impl AccountsTreeView {
                 }
             } else {
                 // Parent node: check children only (not the parent itself)
-                let all_descendants: Vec<Account> = node.children.iter()
+                let all_descendants: Vec<Account> = node
+                    .children
+                    .iter()
                     .flat_map(|child| Self::collect_all_accounts(child))
                     .collect();
-                let selected_count = all_descendants.iter()
+                let selected_count = all_descendants
+                    .iter()
                     .filter(|a| self.selected_accounts.contains(a))
                     .count();
 
@@ -200,11 +203,14 @@ impl Render for AccountsTreeView {
                                         .on_click(move |_new_state, _window, cx| {
                                             let account = Account::parse(&item_id);
                                             view.update(cx, |this, cx| {
-                                                let tree_node = state_entity.read(cx).accounts.clone();
+                                                let tree_node =
+                                                    state_entity.read(cx).accounts.clone();
                                                 this.toggle_selection(&tree_node, account, cx);
                                             });
                                         })
                                 })
+                                // note: this has to be here to prevent list item from
+                                // toggling on click
                                 .on_mouse_down(
                                     MouseButton::Left,
                                     cx.listener(|_, _, _, cx| {
