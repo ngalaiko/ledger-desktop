@@ -3,8 +3,8 @@ use std::collections::HashSet;
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
-    checkbox::{self, Checkbox},
-    h_flex, label,
+    checkbox::Checkbox,
+    h_flex,
     list::ListItem,
     tree::{tree, TreeItem, TreeState},
     IconName,
@@ -92,7 +92,26 @@ impl Render for AccountsTreeView {
                         .justify_between()
                         .items_center()
                         .child(item.label.clone())
-                        .child(Checkbox::new(item.id.clone()).checked(is_multi_selected));
+                        .child(
+                            div()
+                                .child(
+                                    Checkbox::new(item.id.clone())
+                                        .checked(is_multi_selected)
+                                        .on_click(cx.listener({
+                                            let item = entry.item().clone();
+                                            move |this, _checked, _window, cx| {
+                                                let account = Account::parse(&item.id);
+                                                this.toggle_selection(account, cx);
+                                            }
+                                        })),
+                                )
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|_, _, _, cx| {
+                                        cx.stop_propagation();
+                                    }),
+                                ),
+                        );
 
                     let with_icon = if !entry.is_folder() {
                         h_flex().gap_2().pl(px(24.)).child(with_checkbox)
@@ -112,13 +131,6 @@ impl Render for AccountsTreeView {
                         .selected(is_multi_selected)
                         .pl(px(16.) * entry.depth() + px(12.))
                         .child(with_icon)
-                        .on_click(cx.listener({
-                            let item = entry.item().clone();
-                            move |this, _, _, cx| {
-                                let account = Account::parse(&item.id);
-                                this.toggle_selection(account, cx);
-                            }
-                        }))
                 })
             }
         })
