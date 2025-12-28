@@ -22,7 +22,7 @@ impl LedgerFile {
         let state = cx.new(|cx| State::new(cx));
         let accounts_tree = cx.new(|cx| AccountsTreeView::new(state.clone(), cx));
         let register_view = cx.new(|cx| RegisterView::new(state.clone(), window, cx));
-        let chart_state = cx.new(|_cx| BalanceChart::new());
+        let chart_state = cx.new(|cx| BalanceChart::new(cx));
 
         // Update register view filter when selected accounts change
         cx.observe(&accounts_tree, |this, accounts_tree, cx| {

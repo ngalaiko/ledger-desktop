@@ -11,10 +11,14 @@ use fastnum::D128;
 use gpui::prelude::FluentBuilder;
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
-use gpui_component::plot::{
-    scale::{Scale, ScaleLinear, ScalePoint},
-    shape::Line,
-    AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle, AXIS_GAP,
+use gpui_component::{
+    h_flex,
+    plot::{
+        scale::{Scale, ScaleLinear, ScalePoint},
+        shape::Line,
+        AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle, AXIS_GAP,
+    },
+    v_flex, StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
 
@@ -30,16 +34,24 @@ const Y_AXIS_LABEL_COUNT: usize = 5;
 
 pub struct BalanceChart {
     plot_inner: PlotInner,
-
     mouse_position: Option<Point<Pixels>>,
+    colors: Vec<Hsla>,
 }
 
 impl BalanceChart {
-    /// Creates a new empty balance chart.
-    pub fn new() -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let colors = vec![
+            cx.theme().colors.red,
+            cx.theme().colors.green,
+            cx.theme().colors.blue,
+            cx.theme().colors.yellow,
+            cx.theme().colors.magenta,
+            cx.theme().colors.cyan,
+        ];
         Self {
-            plot_inner: PlotInner::new(),
+            plot_inner: PlotInner::new(colors.clone()),
             mouse_position: None,
+            colors,
         }
     }
 
@@ -128,7 +140,7 @@ fn build_chart_data_points(
 impl Render for BalanceChart {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();
-        let crosshair_data = {
+        let tooltip_data = {
             match (self.mouse_position, plot_inner.bounds.get()) {
                 (Some(mouse_position), Some(bounds)) => Some((mouse_position, bounds)),
                 _ => None,
@@ -140,20 +152,98 @@ impl Render for BalanceChart {
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
                 // Update mouse position
                 this.mouse_position = Some(event.position);
-                // Request re-render to update crosshair
                 cx.notify();
             }))
             .child(plot_inner)
-            .when_some(crosshair_data, |this, crosshair_data| {
+            .when_some(tooltip_data, |this, tooltip_data| {
+                let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
+                let mouse_y = tooltip_data.0.y.as_f32() - tooltip_data.1.origin.y.as_f32();
+                let width = calc_width(&tooltip_data.1);
+                let height = calc_height(&tooltip_data.1);
+
+                let x_scale = calc_x_scale(&tooltip_data.1, &self.plot_inner.dates);
+                let y_scale = calc_y_scale(&tooltip_data.1, &self.plot_inner.all_balances);
+
+                let hovered_idx = x_scale.least_index(mouse_x);
+
+                let date = self.plot_inner.dates[hovered_idx];
+                let balances = &self.plot_inner.balances[hovered_idx];
+                let commodities = &self.plot_inner.commodities;
+
+                let tooltip_width_estimate = 220.0;
+                let tooltip_x = if mouse_x < width / 2.0 {
+                    (mouse_x + 20.0).min(width - tooltip_width_estimate)
+                } else {
+                    (mouse_x - tooltip_width_estimate - 20.0).max(0.0)
+                };
+                let tooltip_y = mouse_y;
+
+                let x_pos = x_scale.tick(&date).unwrap_or(0.0);
+
+                let dots = balances.iter().enumerate().flat_map(|(idx, balance)| {
+                    y_scale.tick(balance).map(|y_pos| {
+                        let color = self.colors[idx % self.colors.len()];
+                        div()
+                            .absolute()
+                            .left(px(x_pos - 5.0))
+                            .top(px(y_pos - 5.0))
+                            .w(px(10.0))
+                            .h(px(10.0))
+                            .bg(color)
+                            .rounded_full()
+                            .border_2()
+                            .border_color(cx.theme().background)
+                    })
+                });
+
+                let crosshair_vertical = div()
+                    .id("crosshair-vertical")
+                    .absolute()
+                    .left(tooltip_data.0.x - tooltip_data.1.origin.x)
+                    .top(px(0.0))
+                    .w(px(1.0))
+                    .h(px(height))
+                    .bg(cx.theme().muted_foreground);
+
+                let tooltip = v_flex()
+                    .id("tooltip")
+                    .absolute()
+                    .left(px(tooltip_x))
+                    .top(px(tooltip_y))
+                    .gap_2()
+                    .p_3()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .rounded_lg()
+                    .shadow_lg()
+                    .child(div().text_sm().font_semibold().child(date.to_string()))
+                    .children(balances.iter().enumerate().map(|(idx, balance)| {
+                        let commodity = &commodities[idx];
+                        let color = self.colors[idx % self.colors.len()];
+
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(div().text_xs().text_color(color).child("—"))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("{} ${:.2}", commodity, balance)),
+                            )
+                    }));
+
                 this.child(
                     div()
-                        .id("crosshair-vertical")
                         .absolute()
-                        .left(crosshair_data.0.x - crosshair_data.1.origin.x)
-                        .top(px(0.0))
-                        .w(px(1.0))
-                        .h(crosshair_data.1.size.height)
-                        .bg(cx.theme().muted_foreground),
+                        .left_0()
+                        .top_0()
+                        .size_full()
+                        .child(crosshair_vertical)
+                        .children(dots)
+                        .child(tooltip),
                 )
             })
     }
@@ -161,6 +251,8 @@ impl Render for BalanceChart {
 
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
+    colors: Vec<Hsla>,
+
     dates: Vec<chrono::NaiveDate>,
     balances: Vec<Vec<f64>>,
     commodities: Vec<String>,
@@ -173,8 +265,9 @@ struct PlotInner {
 }
 
 impl PlotInner {
-    pub fn new() -> Self {
+    pub fn new(colors: Vec<Hsla>) -> Self {
         Self {
+            colors,
             dates: vec![],
             balances: vec![],
             all_balances: vec![],
@@ -220,6 +313,27 @@ impl PlotInner {
     }
 }
 
+fn calc_width(bounds: &Bounds<Pixels>) -> f32 {
+    bounds.size.width.as_f32() - PLOT_PADDING
+}
+
+fn calc_height(bounds: &Bounds<Pixels>) -> f32 {
+    bounds.size.height.as_f32() - AXIS_GAP - PLOT_PADDING
+}
+
+fn calc_x_scale(
+    bounds: &Bounds<Pixels>,
+    dates: &[chrono::NaiveDate],
+) -> ScalePoint<chrono::NaiveDate> {
+    let width = calc_width(bounds);
+    ScalePoint::new(dates.to_vec(), vec![PLOT_PADDING, width])
+}
+
+fn calc_y_scale(bounds: &Bounds<Pixels>, all_balances: &[f64]) -> ScaleLinear<f64> {
+    let height = calc_height(bounds);
+    ScaleLinear::new(all_balances.to_vec(), vec![height, PLOT_PADDING])
+}
+
 impl Plot for PlotInner {
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         if self.dates.is_empty() {
@@ -229,13 +343,12 @@ impl Plot for PlotInner {
         self.bounds.set(Some(bounds));
 
         // Calculate drawing area with padding
-        let width = bounds.size.width.as_f32() - PLOT_PADDING;
-        let height = bounds.size.height.as_f32() - AXIS_GAP - PLOT_PADDING;
+        let height = calc_height(&bounds);
 
         // Create X scale for dates (categorical)
-        let x_scale = ScalePoint::new(self.dates.clone(), vec![PLOT_PADDING, width]);
+        let x_scale = calc_x_scale(&bounds, &self.dates);
         // Create Y scale for balances (linear)
-        let y_scale = ScaleLinear::new(self.all_balances.clone(), vec![height, PLOT_PADDING]);
+        let y_scale = calc_y_scale(&bounds, &self.all_balances);
 
         // Create Y-axis labels
         let y_labels: Vec<AxisText> = (0..Y_AXIS_LABEL_COUNT)
@@ -273,15 +386,6 @@ impl Plot for PlotInner {
             .stroke(cx.theme().border)
             .paint(&bounds, window, cx);
 
-        let colors = vec![
-            cx.theme().colors.red,
-            cx.theme().colors.green,
-            cx.theme().colors.blue,
-            cx.theme().colors.yellow,
-            cx.theme().colors.magenta,
-            cx.theme().colors.cyan,
-        ];
-
         let data = self
             .dates
             .iter()
@@ -290,7 +394,7 @@ impl Plot for PlotInner {
 
         // Draw a line for each commodity
         for (commodity_idx, _commodity) in self.commodities.iter().enumerate() {
-            let color = colors[commodity_idx % colors.len()];
+            let color = self.colors[commodity_idx % self.colors.len()];
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
