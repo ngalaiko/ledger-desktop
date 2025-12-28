@@ -5,29 +5,25 @@ use gpui::*;
 use gpui_component::{
     h_flex,
     table::{Column, Table, TableDelegate, TableState},
-    v_flex,
 };
 
 use crate::{accounts::Account, transactions::Transaction};
 
-use super::{
-    balance_chart::{BalanceChart, DataPoint},
-    state::State,
-};
+use super::state::State;
 
 pub struct RegisterView {
     state: Entity<State>,
-    chart_state: Entity<BalanceChart>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
     filter_accounts: HashSet<Account>,
+    pub visible_transactions: Vec<Transaction>,
 }
 
 impl RegisterView {
     pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
-        let chart_state = cx.new(|_cx| BalanceChart::new());
 
+        // Rebuild visible transactions when the state changes
         cx.observe(&state, |this, _state, cx| {
             this.rebuild_visible_transactions(cx);
         })
@@ -35,8 +31,8 @@ impl RegisterView {
 
         Self {
             state,
-            chart_state,
             table_state,
+            visible_transactions: vec![],
             filter_accounts: HashSet::new(),
         }
     }
@@ -73,15 +69,13 @@ impl RegisterView {
                 }
             })
             .collect::<Vec<_>>();
-        let (chart_data_points, commodities) = build_chart_data_points(&visible_transactions);
-        self.chart_state.update(cx, |chart_state, _cx| {
-            chart_state.set_data(chart_data_points, commodities);
-        });
+        self.visible_transactions = visible_transactions.clone();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
             delegate.transactions = visible_transactions;
             table_state.refresh(cx);
         });
+        cx.notify();
     }
 
     pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
@@ -90,89 +84,9 @@ impl RegisterView {
     }
 }
 
-fn build_chart_data_points(transactions: &[Transaction]) -> (Vec<DataPoint>, Vec<String>) {
-    use std::collections::{HashMap, HashSet};
-
-    if transactions.is_empty() {
-        return (vec![], vec![]);
-    }
-
-    // First pass: collect all unique commodities
-    let mut all_commodities = HashSet::new();
-    for transaction in transactions {
-        for posting in &transaction.postings {
-            all_commodities.insert(posting.amount.value.commodity.clone());
-        }
-    }
-
-    // Sort commodities alphabetically for consistent ordering
-    let mut commodities: Vec<String> = all_commodities.into_iter().collect();
-    commodities.sort();
-
-    let min_date = transactions
-        .first()
-        .map(|t| t.time)
-        .expect("transactions are not empty");
-    let max_date = transactions
-        .last()
-        .map(|t| t.time)
-        .expect("transactions are not empty");
-
-    let mut data_points = Vec::new();
-    let mut balances = HashMap::<String, f64>::new();
-
-    // Initialize all commodities with 0.0
-    for commodity in &commodities {
-        balances.insert(commodity.clone(), 0.0);
-    }
-
-    let mut transaction_idx = 0;
-
-    // Iterate through each day
-    let mut current_date = min_date;
-    while current_date <= max_date {
-        // Process all transactions on this date
-        while transaction_idx < transactions.len()
-            && transactions[transaction_idx].time == current_date
-        {
-            for posting in &transactions[transaction_idx].postings {
-                let commodity = posting.amount.value.commodity.clone();
-                let value: f64 = posting
-                    .amount
-                    .value
-                    .value
-                    .to_string()
-                    .parse()
-                    .unwrap_or(0.0);
-
-                *balances.entry(commodity).or_insert(0.0) += value;
-            }
-            transaction_idx += 1;
-        }
-
-        // Create a data point with all commodities in consistent order
-        let ordered_balances: Vec<(String, f64)> = commodities
-            .iter()
-            .map(|commodity| (commodity.clone(), balances[commodity]))
-            .collect();
-
-        data_points.push(DataPoint {
-            date: current_date,
-            balances: ordered_balances,
-        });
-
-        current_date += chrono::Duration::days(1);
-    }
-
-    (data_points, commodities)
-}
-
 impl Render for RegisterView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .child(self.chart_state.clone())
-            .child(Table::new(&self.table_state))
+        Table::new(&self.table_state)
     }
 }
 

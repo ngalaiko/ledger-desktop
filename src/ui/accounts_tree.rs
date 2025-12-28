@@ -26,6 +26,7 @@ impl AccountsTreeView {
     pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
+        // Rebuild tree items with accounts when the state changes
         cx.observe(&state, |this, state, cx| {
             let tree_items = build_items(&state.read(cx).accounts);
             this.tree_state.update(cx, |tree_state, cx| {
