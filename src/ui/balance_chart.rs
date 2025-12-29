@@ -6,7 +6,6 @@
 
 use std::{cell::Cell, collections::HashSet, rc::Rc};
 
-use chrono::Datelike;
 use fastnum::D128;
 use gpui::prelude::FluentBuilder;
 #[allow(clippy::wildcard_imports)]
@@ -48,6 +47,7 @@ impl BalanceChart {
             cx.theme().colors.magenta,
             cx.theme().colors.cyan,
         ];
+
         Self {
             plot_inner: PlotInner::new(colors.clone()),
             mouse_position: None,
@@ -55,86 +55,79 @@ impl BalanceChart {
         }
     }
 
-    pub fn set_data(&mut self, transactions: &[Transaction]) {
-        let (dates, commodities, balances) = build_chart_data_points(transactions);
-        self.plot_inner.set_data(dates, commodities, balances);
-    }
-}
+    pub fn set_transactions(&mut self, transactions: Vec<Transaction>, cx: &mut Context<Self>) {
+        use std::collections::{HashMap, HashSet};
 
-fn build_chart_data_points(
-    transactions: &[Transaction],
-) -> (Vec<chrono::NaiveDate>, Vec<String>, Vec<Vec<fastnum::D128>>) {
-    use std::collections::{HashMap, HashSet};
-
-    if transactions.is_empty() {
-        return (vec![], vec![], vec![]);
-    }
-
-    let transactions = transactions
-        .iter()
-        .filter(|t| t.time.year() == 2025)
-        .collect::<Vec<_>>();
-
-    // First pass: collect all unique commodities
-    let mut all_commodities = HashSet::new();
-    for transaction in transactions.iter() {
-        for posting in &transaction.postings {
-            all_commodities.insert(posting.amount.value.commodity.clone());
+        if transactions.is_empty() {
+            self.plot_inner.set_data(vec![], vec![], vec![]);
+            self.mouse_position = None;
+            cx.notify();
+            return;
         }
-    }
 
-    // Sort commodities alphabetically for consistent ordering
-    let mut commodities: Vec<String> = all_commodities.into_iter().collect();
-    commodities.sort();
-
-    let min_date = transactions
-        .first()
-        .map(|t| t.time)
-        .expect("transactions are not empty");
-    let max_date = transactions
-        .last()
-        .map(|t| t.time)
-        .expect("transactions are not empty");
-
-    let mut dates = Vec::new();
-    let mut ordered_balances = Vec::new();
-    let mut balances = HashMap::<String, fastnum::D128>::new();
-
-    // Initialize all commodities with 0.0
-    for commodity in &commodities {
-        balances.insert(commodity.clone(), fastnum::D128::ZERO);
-    }
-
-    let mut transaction_idx = 0;
-
-    // Iterate through each day
-    let mut current_date = min_date;
-    while current_date <= max_date {
-        // Process all transactions on this date
-        while transaction_idx < transactions.len()
-            && transactions[transaction_idx].time == current_date
-        {
-            for posting in &transactions[transaction_idx].postings {
-                let commodity = posting.amount.value.commodity.clone();
-                let value = posting.amount.value.value;
-                *balances.entry(commodity).or_insert(fastnum::D128::ZERO) += value;
+        // First pass: collect all unique commodities
+        let mut all_commodities = HashSet::new();
+        for transaction in transactions.iter() {
+            for posting in &transaction.postings {
+                all_commodities.insert(posting.amount.value.commodity.clone());
             }
-            transaction_idx += 1;
         }
 
-        // Create a data point with all commodities in consistent order
-        let ordered: Vec<fastnum::D128> = commodities
-            .iter()
-            .map(|commodity| balances[commodity])
-            .collect();
+        // Sort commodities alphabetically for consistent ordering
+        let mut commodities: Vec<String> = all_commodities.into_iter().collect();
+        commodities.sort();
 
-        dates.push(current_date);
-        ordered_balances.push(ordered);
+        let min_date = transactions
+            .first()
+            .map(|t| t.time)
+            .expect("transactions are not empty");
+        let max_date = transactions
+            .last()
+            .map(|t| t.time)
+            .expect("transactions are not empty");
 
-        current_date += chrono::Duration::days(1);
+        let mut dates = Vec::new();
+        let mut ordered_balances = Vec::new();
+        let mut balances = HashMap::<String, fastnum::D128>::new();
+
+        // Initialize all commodities with 0.0
+        for commodity in &commodities {
+            balances.insert(commodity.clone(), fastnum::D128::ZERO);
+        }
+
+        let mut transaction_idx = 0;
+
+        // Iterate through each day
+        let mut current_date = min_date;
+        while current_date <= max_date {
+            // Process all transactions on this date
+            while transaction_idx < transactions.len()
+                && transactions[transaction_idx].time == current_date
+            {
+                for posting in &transactions[transaction_idx].postings {
+                    let commodity = posting.amount.value.commodity.clone();
+                    let value = posting.amount.value.value;
+                    *balances.entry(commodity).or_insert(fastnum::D128::ZERO) += value;
+                }
+                transaction_idx += 1;
+            }
+
+            // Create a data point with all commodities in consistent order
+            let ordered: Vec<fastnum::D128> = commodities
+                .iter()
+                .map(|commodity| balances[commodity])
+                .collect();
+
+            dates.push(current_date);
+            ordered_balances.push(ordered);
+
+            current_date += chrono::Duration::days(1);
+        }
+
+        self.plot_inner
+            .set_data(dates, commodities, ordered_balances);
+        cx.notify();
     }
-
-    (dates, commodities, ordered_balances)
 }
 
 impl Render for BalanceChart {
@@ -227,11 +220,14 @@ impl Render for BalanceChart {
                             .items_center()
                             .child(div().text_xs().text_color(color).child("—"))
                             .child(
-                                div()
-                                    .text_sm()
+                                h_flex()
+                                    .gap_2()
+                                    .text_xs()
                                     .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("{} ${:.2}", commodity, balance)),
+                                    .w_full()
+                                    .justify_between()
+                                    .child(commodity.to_string())
+                                    .child(balance.to_string()),
                             )
                     }));
 

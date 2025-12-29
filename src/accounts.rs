@@ -18,7 +18,7 @@ impl fmt::Display for Account {
 
 impl Account {
     pub fn is_parent_of(&self, other: &Account) -> bool {
-        if self.segments.len() >= other.segments.len() {
+        if self.segments.len() > other.segments.len() {
             return false;
         }
         for (a, b) in self.segments.iter().zip(other.segments.iter()) {

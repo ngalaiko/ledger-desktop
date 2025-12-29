@@ -7,80 +7,26 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
-use crate::{accounts::Account, transactions::Transaction};
-
-use super::state::State;
+use crate::transactions::Transaction;
 
 pub struct RegisterView {
-    state: Entity<State>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
-    filter_accounts: HashSet<Account>,
-    pub visible_transactions: Vec<Transaction>,
 }
 
 impl RegisterView {
-    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
-        // Rebuild visible transactions when the state changes
-        cx.observe(&state, |this, _state, cx| {
-            this.rebuild_visible_transactions(cx);
-        })
-        .detach();
-
-        Self {
-            state,
-            table_state,
-            visible_transactions: vec![],
-            filter_accounts: HashSet::new(),
-        }
+        Self { table_state }
     }
 
-    fn rebuild_visible_transactions(&mut self, cx: &mut Context<Self>) {
-        let visible_transactions = self
-            .state
-            .read(cx)
-            .transactions
-            .iter()
-            .filter_map(|transaction| {
-                if self.filter_accounts.is_empty() {
-                    Some(transaction.clone())
-                } else {
-                    let matching_postings = transaction
-                        .postings
-                        .iter()
-                        .filter(|posting| {
-                            self.filter_accounts.iter().any(|filter| {
-                                posting.account.eq(filter) || filter.is_parent_of(&posting.account)
-                            })
-                        })
-                        .collect::<Vec<_>>();
-
-                    if matching_postings.is_empty() {
-                        // No matching postings, skip this transaction
-                        None
-                    } else {
-                        Some(Transaction {
-                            postings: matching_postings.into_iter().cloned().collect(),
-                            ..transaction.clone()
-                        })
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-        self.visible_transactions = visible_transactions.clone();
+    pub fn set_transactions(&mut self, transactions: Vec<Transaction>, cx: &mut Context<Self>) {
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
-            delegate.transactions = visible_transactions;
+            delegate.transactions = transactions;
             table_state.refresh(cx);
         });
-        cx.notify();
-    }
-
-    pub fn set_account_filter(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
-        self.filter_accounts = accounts;
-        self.rebuild_visible_transactions(cx);
     }
 }
 
