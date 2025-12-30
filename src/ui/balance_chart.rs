@@ -4,7 +4,10 @@
 // - configurable period (weekly, monthly)
 // - configurable resolution (daily, weekly, monthly)
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use fastnum::D128;
 use gpui::prelude::FluentBuilder;
@@ -15,9 +18,10 @@ use gpui_component::{
     plot::{
         scale::{Scale, ScaleLinear, ScalePoint},
         shape::Line,
+        tooltip::{CrossLine, Dot, Tooltip, TooltipPosition},
         AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle,
     },
-    v_flex, StyledExt,
+    StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
 
@@ -152,7 +156,9 @@ impl Render for BalanceChart {
                 this.mouse_position = Some(event.position);
 
                 // Only notify if the hovered data point changed
-                if let (Some(mouse_pos), Some(bounds)) = (this.mouse_position, this.plot_inner.bounds.get()) {
+                if let (Some(mouse_pos), Some(bounds)) =
+                    (this.mouse_position, this.plot_inner.bounds.get())
+                {
                     if !this.plot_inner.dates.is_empty() {
                         let mouse_x = mouse_pos.x.as_f32() - bounds.origin.x.as_f32();
                         let (x_scale, _) = this.plot_inner.get_or_compute_scales(&bounds);
@@ -173,7 +179,6 @@ impl Render for BalanceChart {
                 let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
                 let mouse_y = tooltip_data.0.y.as_f32() - tooltip_data.1.origin.y.as_f32();
                 let width = calc_width(&tooltip_data.1);
-                let height = calc_height(&tooltip_data.1);
 
                 let (x_scale, y_scale) = self.plot_inner.get_or_compute_scales(&tooltip_data.1);
 
@@ -183,47 +188,39 @@ impl Render for BalanceChart {
                 let balances = &self.plot_inner.balances[hovered_idx];
                 let commodities = &self.plot_inner.commodities;
 
-                let tooltip_width_estimate = 220.0;
-                let tooltip_x = if mouse_x < width / 2.0 {
-                    (mouse_x + 20.0).min(width - tooltip_width_estimate)
-                } else {
-                    (mouse_x - tooltip_width_estimate - 20.0).max(0.0)
-                };
-                let tooltip_y = mouse_y;
-
                 let x_pos = x_scale.tick(&date).unwrap_or(0.0);
 
-                let dots = balances.iter().enumerate().flat_map(|(idx, balance)| {
-                    y_scale.tick(balance).map(|y_pos| {
-                        let color = self.colors[idx % self.colors.len()];
-                        div()
-                            .absolute()
-                            .left(px(x_pos - 5.0))
-                            .top(px(y_pos - 5.0))
-                            .w(px(10.0))
-                            .h(px(10.0))
-                            .bg(color)
-                            .rounded_full()
-                            .border_2()
-                            .border_color(cx.theme().background)
+                // Create CrossLine for the vertical crosshair
+                let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y)));
+
+                // Create Dot components for each data point
+                let dots: Vec<Dot> = balances
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(idx, balance)| {
+                        y_scale.tick(balance).map(|y_pos| {
+                            let color = self.colors[idx % self.colors.len()];
+                            Dot::new(point(px(x_pos), px(y_pos)))
+                                .size(px(10.0))
+                                .fill(color)
+                                .stroke(cx.theme().background)
+                        })
                     })
-                });
+                    .collect();
 
-                let crosshair_vertical = div()
-                    .id("crosshair-vertical")
-                    .absolute()
-                    .left(tooltip_data.0.x - tooltip_data.1.origin.x)
-                    .top(px(0.0))
-                    .w(px(1.0))
-                    .h(px(height))
-                    .bg(cx.theme().muted_foreground);
+                // Determine tooltip position based on mouse location
+                let position = if mouse_x < width / 2.0 {
+                    TooltipPosition::Right
+                } else {
+                    TooltipPosition::Left
+                };
 
-                let tooltip = v_flex()
-                    .id("tooltip")
-                    .absolute()
-                    .left(px(tooltip_x))
-                    .top(px(tooltip_y))
-                    .gap_2()
+                // Build the Tooltip component
+                let tooltip = Tooltip::new()
+                    .position(position)
+                    .gap(px(20.0))
+                    .cross_line(cross_line)
+                    .dots(dots)
                     .p_3()
                     .border_1()
                     .border_color(cx.theme().border)
@@ -251,16 +248,7 @@ impl Render for BalanceChart {
                             )
                     }));
 
-                this.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .top_0()
-                        .size_full()
-                        .child(crosshair_vertical)
-                        .children(dots)
-                        .child(tooltip),
-                )
+                this.child(tooltip)
             })
     }
 }
