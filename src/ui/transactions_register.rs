@@ -7,24 +7,54 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
-use crate::transactions::Transaction;
+use crate::{accounts::Account, transactions::Transaction};
+
+use super::state::State;
 
 pub struct RegisterView {
+    state: Entity<State>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
 }
 
 impl RegisterView {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
-        Self { table_state }
+        Self { state, table_state }
     }
 
-    pub fn set_transactions(&mut self, transactions: Vec<Transaction>, cx: &mut Context<Self>) {
+    pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
+        let visible_transactions = self
+            .state
+            .read(cx)
+            .transactions
+            .iter()
+            .filter_map(|transaction| {
+                let matching_postings = transaction
+                    .postings
+                    .iter()
+                    .filter(|posting| {
+                        visible_accounts
+                            .iter()
+                            .any(|filter| filter.is_parent_of(&posting.account))
+                    })
+                    .collect::<Vec<_>>();
+
+                if matching_postings.is_empty() {
+                    // No matching postings, skip this transaction
+                    None
+                } else {
+                    Some(Transaction {
+                        postings: matching_postings.into_iter().cloned().collect(),
+                        ..transaction.clone()
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
-            delegate.transactions = transactions;
+            delegate.transactions = visible_transactions;
             table_state.refresh(cx);
         });
     }

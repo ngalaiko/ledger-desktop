@@ -12,7 +12,7 @@ use gpui_component::{
 use crate::accounts::{Account, TreeNode};
 
 use super::{
-    components::{Checkbox, CheckboxState},
+    components::checkbox::{Checkbox, CheckboxState},
     state::State,
 };
 

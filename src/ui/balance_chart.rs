@@ -1,5 +1,4 @@
 // todo:
-// - add tooltip on hover showing date and balances
 // - add legend for commodities
 // - configurable period (weekly, monthly)
 // - configurable resolution (daily, weekly, monthly)
@@ -7,6 +6,8 @@
 use core::fmt;
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
+    hash::Hash,
     rc::Rc,
 };
 
@@ -28,7 +29,9 @@ use gpui_component::{
 };
 use gpui_component::{ActiveTheme, PixelsExt};
 
-use crate::transactions::Transaction;
+use crate::accounts::{Account, Balance};
+
+use super::state::State;
 
 // Constants for chart layout
 /// Padding around the plot area in pixels
@@ -87,6 +90,7 @@ impl fmt::Display for Period {
 }
 
 pub struct BalanceChart {
+    state: Entity<State>,
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
@@ -94,7 +98,7 @@ pub struct BalanceChart {
 }
 
 impl BalanceChart {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
         let colors = vec![
             cx.theme().colors.red,
             cx.theme().colors.green,
@@ -105,6 +109,7 @@ impl BalanceChart {
         ];
 
         Self {
+            state,
             plot_inner: PlotInner::new(Period::D30, colors.clone()),
             mouse_position: None,
             hovered_idx: None,
@@ -112,80 +117,65 @@ impl BalanceChart {
         }
     }
 
-    pub fn set_transactions(&mut self, transactions: Vec<Transaction>, cx: &mut Context<Self>) {
-        use std::collections::{HashMap, HashSet};
+    pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
+        let state = self.state.read(cx);
 
-        if transactions.is_empty() {
-            self.plot_inner.set_data(vec![], vec![], vec![]);
-            self.mouse_position = None;
-            self.hovered_idx = None;
+        // Collect all dates where any visible account has transactions
+        let mut all_dates = std::collections::BTreeSet::new();
+        for (account, date_balances) in state.running_balance.iter() {
+            if visible_accounts
+                .iter()
+                .any(|visible_account| visible_account.is_parent_of(account))
+            {
+                for date in date_balances.keys() {
+                    all_dates.insert(*date);
+                }
+            }
+        }
+
+        if all_dates.is_empty() {
+            self.plot_inner.set_data(vec![], vec![]);
             cx.notify();
             return;
         }
 
-        // First pass: collect all unique commodities
-        let mut all_commodities = HashSet::new();
-        for transaction in transactions.iter() {
-            for posting in &transaction.postings {
-                all_commodities.insert(posting.amount.value.commodity.clone());
-            }
-        }
+        let min_date = *all_dates.first().expect("at least one date exists");
+        let max_date = *all_dates.last().expect("at least one date exists");
 
-        // Sort commodities alphabetically for consistent ordering
-        let mut commodities: Vec<String> = all_commodities.into_iter().collect();
-        commodities.sort();
+        let mut plot_dates = Vec::new();
+        let mut plot_balances = Vec::new();
 
-        let min_date = transactions
-            .first()
-            .map(|t| t.time)
-            .expect("transactions are not empty");
-        let max_date = transactions
-            .last()
-            .map(|t| t.time)
-            .expect("transactions are not empty");
-
-        let mut dates = Vec::new();
-        let mut ordered_balances = Vec::new();
-        let mut balances = HashMap::<String, fastnum::D128>::new();
-
-        // Initialize all commodities with 0.0
-        for commodity in &commodities {
-            balances.insert(commodity.clone(), fastnum::D128::ZERO);
-        }
-
-        let mut transaction_idx = 0;
-
-        // Iterate through each day
         let mut current_date = min_date;
         while current_date <= max_date {
-            // Process all transactions on this date
-            while transaction_idx < transactions.len()
-                && transactions[transaction_idx].time == current_date
-            {
-                for posting in &transactions[transaction_idx].postings {
-                    let commodity = posting.amount.value.commodity.clone();
-                    let value = posting.amount.value.value;
-                    *balances.entry(commodity).or_insert(fastnum::D128::ZERO) += value;
-                }
-                transaction_idx += 1;
+            // Aggregate balances from all visible accounts at this date
+            let mut daily_balance = Balance::new();
+
+            for visible_account in visible_accounts {
+                let balance = state
+                    .running_balance
+                    .get_balance(visible_account, current_date);
+                daily_balance.add(&balance);
             }
 
-            // Create a data point with all commodities in consistent order
-            let ordered: Vec<fastnum::D128> = commodities
-                .iter()
-                .map(|commodity| balances[commodity])
-                .collect();
-
-            dates.push(current_date);
-            ordered_balances.push(ordered);
+            plot_dates.push(current_date);
+            plot_balances.push(daily_balance);
 
             current_date += chrono::Duration::days(1);
         }
 
-        self.plot_inner
-            .set_data(dates, commodities, ordered_balances);
-        cx.notify();
+        self.plot_inner.set_data(plot_dates, plot_balances);
     }
+}
+
+fn get_color(colors: &[Hsla], commodity: &String) -> Hsla {
+    let hash = {
+        use std::hash::Hasher;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        commodity.hash(&mut hasher);
+        hasher.finish()
+    };
+    let color_idx = (hash as usize) % colors.len();
+    colors[color_idx]
 }
 
 #[derive(Clone, PartialEq, serde::Deserialize, schemars::JsonSchema, Action)]
@@ -269,9 +259,10 @@ impl Render for BalanceChart {
 
                 let date = self.plot_inner.dates[hovered_idx];
                 let balances = &self.plot_inner.balances[hovered_idx];
-                let commodities = &self.plot_inner.commodities;
 
-                let x_pos = x_scale.tick(&date).unwrap_or(0.0);
+                let x_pos = x_scale
+                    .tick(&date)
+                    .expect("hovered date should have x position");
 
                 // Create CrossLine for the vertical crosshair
                 let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y)));
@@ -279,10 +270,10 @@ impl Render for BalanceChart {
                 // Create Dot components for each data point
                 let dots: Vec<Dot> = balances
                     .iter()
-                    .enumerate()
-                    .flat_map(|(idx, balance)| {
-                        y_scale.tick(balance).map(|y_pos| {
-                            let color = self.colors[idx % self.colors.len()];
+                    .flat_map(|amount| {
+                        let color = get_color(&self.colors, &amount.commodity);
+                        y_scale.tick(&amount.value.to_f64()).map(|y_pos| {
+                            // let color = self.colors[idx % self.colors.len()];
                             Dot::new(point(px(x_pos), px(y_pos)))
                                 .size(px(10.0))
                                 .fill(color)
@@ -311,9 +302,8 @@ impl Render for BalanceChart {
                         .rounded_lg()
                         .shadow_lg()
                         .child(div().text_sm().font_semibold().child(date.to_string()))
-                        .children(balances.iter().enumerate().map(|(idx, balance)| {
-                            let commodity = &commodities[idx];
-                            let color = self.colors[idx % self.colors.len()];
+                        .children(balances.iter().map(|amount| {
+                            let color = get_color(&self.colors, &amount.commodity);
 
                             h_flex()
                                 .gap_2()
@@ -326,8 +316,8 @@ impl Render for BalanceChart {
                                         .font_medium()
                                         .w_full()
                                         .justify_between()
-                                        .child(commodity.to_string())
-                                        .child(balance.to_string()),
+                                        .child(amount.commodity.to_string())
+                                        .child(amount.value.to_string()),
                                 )
                         })),
                 )
@@ -342,10 +332,8 @@ struct PlotInner {
     period: Period,
 
     dates: Vec<chrono::NaiveDate>,
-    balances: Vec<Vec<f64>>,
-    commodities: Vec<String>,
+    balances: Vec<Balance>,
 
-    all_balances: Vec<f64>,
     y_min: f64,
     y_max: f64,
 
@@ -362,10 +350,8 @@ impl PlotInner {
             period,
             dates: vec![],
             balances: vec![],
-            all_balances: vec![],
             y_min: 0.0,
             y_max: 0.0,
-            commodities: vec![],
             bounds: Rc::new(Cell::new(None)),
             cached_bounds: Rc::new(Cell::new(None)),
             cached_x_scale: Rc::new(RefCell::new(None)),
@@ -377,36 +363,26 @@ impl PlotInner {
         self.period = period;
     }
 
-    pub fn set_data(
-        &mut self,
-        dates: Vec<chrono::NaiveDate>,
-        commodities: Vec<String>,
-        balances: Vec<Vec<fastnum::D128>>,
-    ) {
+    pub fn set_data(&mut self, dates: Vec<chrono::NaiveDate>, balances: Vec<Balance>) {
         self.dates = dates;
-        self.balances = balances
-            .iter()
-            .map(|balances| balances.iter().map(|b| b.to_f64()).collect())
-            .collect();
-        self.commodities = commodities;
+        self.balances = balances;
 
         let mut min_balance = D128::MAX;
         let mut max_balance = D128::MIN;
 
-        for daily_balances in &balances {
-            for &balance in daily_balances {
-                if balance < min_balance {
-                    min_balance = balance;
+        for daily_balances in &self.balances {
+            for amount in daily_balances.iter() {
+                if amount.value < min_balance {
+                    min_balance = amount.value;
                 }
-                if balance > max_balance {
-                    max_balance = balance;
+                if amount.value > max_balance {
+                    max_balance = amount.value;
                 }
             }
         }
 
         self.y_min = min_balance.to_f64();
         self.y_max = max_balance.to_f64();
-        self.all_balances = vec![self.y_min, self.y_max];
 
         // Invalidate cached scales since data changed
         self.cached_bounds.set(None);
@@ -426,7 +402,7 @@ impl PlotInner {
 
         if needs_recompute {
             let x_scale = calc_x_scale(bounds, &self.dates);
-            let y_scale = calc_y_scale(bounds, &self.all_balances);
+            let y_scale = calc_y_scale(bounds, &[self.y_min, self.y_max]);
 
             self.cached_bounds.set(Some(*bounds));
             self.cached_x_scale.replace(Some(x_scale.clone()));
@@ -434,10 +410,17 @@ impl PlotInner {
 
             (x_scale, y_scale)
         } else {
-            // Safe to unwrap because we know cached values exist
             (
-                self.cached_x_scale.borrow().as_ref().unwrap().clone(),
-                self.cached_y_scale.borrow().as_ref().unwrap().clone(),
+                self.cached_x_scale
+                    .borrow()
+                    .as_ref()
+                    .expect("X scale should be cached")
+                    .clone(),
+                self.cached_y_scale
+                    .borrow()
+                    .as_ref()
+                    .expect("Y scale should be cached")
+                    .clone(),
             )
         }
     }
@@ -459,9 +442,9 @@ fn calc_x_scale(
     ScalePoint::new(dates.to_vec(), vec![PLOT_PADDING, width])
 }
 
-fn calc_y_scale(bounds: &Bounds<Pixels>, all_balances: &[f64]) -> ScaleLinear<f64> {
+fn calc_y_scale(bounds: &Bounds<Pixels>, domain: &[f64]) -> ScaleLinear<f64> {
     let height = calc_height(bounds);
-    ScaleLinear::new(all_balances.to_vec(), vec![height, PLOT_PADDING])
+    ScaleLinear::new(domain.to_vec(), vec![height, PLOT_PADDING])
 }
 
 impl Plot for PlotInner {
@@ -514,24 +497,31 @@ impl Plot for PlotInner {
             .stroke(cx.theme().border)
             .paint(&bounds, window, cx);
 
-        let data = self
-            .dates
-            .iter()
-            .zip(self.balances.iter())
-            .collect::<Vec<_>>();
+        // Collect all unique commodities across all dates
+        let mut all_commodities = HashSet::new();
+        for balance in &self.balances {
+            for amount in balance.iter() {
+                all_commodities.insert(amount.commodity.clone());
+            }
+        }
+        let mut all_commodities: Vec<String> = all_commodities.into_iter().collect();
+        all_commodities.sort();
 
         // Draw a line for each commodity
-        for idx in 0..self.commodities.len() {
-            let color = self.colors[idx % self.colors.len()];
+        for commodity in all_commodities {
+            let color = get_color(&self.colors, &commodity);
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
             Line::new()
-                .data(data.clone())
-                .x(move |d| x_scale.tick(&d.0))
-                .y(move |d| d.1.get(idx).and_then(|v| y_scale.tick(v)))
+                .data(self.dates.iter().zip(self.balances.iter()))
+                .x(move |d: &(&chrono::NaiveDate, &Balance)| x_scale.tick(d.0))
+                .y(move |d: &(&chrono::NaiveDate, &Balance)| {
+                    d.1.get_amount(&commodity)
+                        .and_then(|amt| y_scale.tick(&amt.value.to_f64()))
+                })
                 .stroke(color)
-                .stroke_width(px(2.0))
+                .stroke_width(px(1.0))
                 .stroke_style(StrokeStyle::Linear)
                 .paint(&bounds, window);
         }

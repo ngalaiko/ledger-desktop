@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use fastnum::D128;
 
@@ -53,6 +53,16 @@ impl Account {
         self.segments.last().unwrap()
     }
 
+    pub fn ancestors(&self) -> Vec<Account> {
+        let mut ancestors = Vec::new();
+        for i in 1..self.segments.len() {
+            ancestors.push(Account {
+                segments: self.segments[..i].to_vec(),
+            });
+        }
+        ancestors
+    }
+
     #[cfg(test)]
     pub fn parent(&self) -> Option<Account> {
         if self.segments.len() > 1 {
@@ -72,7 +82,7 @@ impl Account {
 
 #[derive(Debug, Clone)]
 pub struct Balance {
-    by_commodity: HashMap<String, CurrencyAmount>,
+    by_commodity: BTreeMap<String, CurrencyAmount>,
 }
 
 impl fmt::Display for Balance {
@@ -88,7 +98,17 @@ impl fmt::Display for Balance {
 impl Balance {
     pub fn new() -> Self {
         Self {
-            by_commodity: HashMap::new(),
+            by_commodity: BTreeMap::new(),
+        }
+    }
+
+    pub fn get_amount(&self, commodity: &str) -> Option<&CurrencyAmount> {
+        self.by_commodity.get(commodity)
+    }
+
+    pub fn add(&mut self, other: &Balance) {
+        for amount in other.iter() {
+            self.add_amount(amount.clone());
         }
     }
 
@@ -102,12 +122,15 @@ impl Balance {
             });
         entry.value += amount.value;
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &CurrencyAmount> + '_ {
+        self.by_commodity.values()
+    }
 }
 
 #[derive(Clone)]
 pub struct TreeNode {
     pub account: Account,
-    pub balance: Balance,
     pub children: Vec<TreeNode>,
 }
 
@@ -115,7 +138,6 @@ impl TreeNode {
     pub fn new() -> Self {
         Self {
             account: Account::empty(),
-            balance: Balance::new(),
             children: Vec::new(),
         }
     }
@@ -123,7 +145,6 @@ impl TreeNode {
     pub fn clear(&mut self) {
         self.children = Vec::new();
         self.account = Account::empty();
-        self.balance = Balance::new();
     }
 
     pub fn add_account(&mut self, account: &Account) {
@@ -148,7 +169,6 @@ impl TreeNode {
             None => {
                 self.children.push(TreeNode {
                     account: current,
-                    balance: Balance::new(),
                     children: Vec::new(),
                 });
                 self.children.len() - 1
@@ -159,50 +179,10 @@ impl TreeNode {
 
         child.add_account_recursive(account, depth + 1)
     }
-
-    pub fn add_amount_to_account(&mut self, account: &Account, amount: &CurrencyAmount) {
-        self.add_amount_recursive(account, amount, 0);
-    }
-
-    fn add_amount_recursive(
-        &mut self,
-        account: &Account,
-        amount: &CurrencyAmount,
-        depth: usize,
-    ) -> bool {
-        if depth >= account.segments.len() {
-            return false;
-        }
-
-        let current = Account::from_segments(account.segments[..=depth].to_vec());
-
-        // Find the child node
-        if let Some(child) = self
-            .children
-            .iter_mut()
-            .find(|child| child.account.eq(&current))
-        {
-            // If this is the target account, add the amount
-            if child.account.eq(account) {
-                child.balance.add_amount(amount.clone());
-                return true;
-            }
-
-            // Otherwise, recurse to children and if found, add to this node's balance too
-            if child.add_amount_recursive(account, amount, depth + 1) {
-                child.balance.add_amount(amount.clone());
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::transactions::CurrencyAmount;
-
     use super::*;
 
     #[test]
@@ -268,123 +248,5 @@ mod tests {
         let bank = &assets.children[0];
         assert_eq!(bank.account, Account::parse("assets:bank"));
         assert_eq!(bank.children.len(), 2); // checking and savings
-    }
-
-    #[test]
-    fn test_subtree_balance_single_account() {
-        use fastnum::D128;
-
-        let mut tree = TreeNode::new();
-        tree.add_account(&Account::parse("assets:bank:checking"));
-
-        let amount = CurrencyAmount {
-            value: "100.00".parse::<D128>().unwrap(), // 100.00
-            commodity: "USD".to_string(),
-        };
-
-        tree.add_amount_to_account(&Account::parse("assets:bank:checking"), &amount);
-
-        // Check that the leaf account has the balance
-        let assets = &tree.children[0];
-        let bank = &assets.children[0];
-        let checking = &bank.children[0];
-        assert_eq!(checking.balance.to_string(), "100.00 USD");
-
-        // Check that all parent accounts have the same balance (subtree total)
-        assert_eq!(bank.balance.to_string(), "100.00 USD");
-        assert_eq!(assets.balance.to_string(), "100.00 USD");
-    }
-
-    #[test]
-    fn test_subtree_balance_multiple_accounts() {
-        use fastnum::D128;
-
-        let mut tree = TreeNode::new();
-        tree.add_account(&Account::parse("assets:bank:checking"));
-        tree.add_account(&Account::parse("assets:bank:savings"));
-        tree.add_account(&Account::parse("assets:cash"));
-
-        // Add amounts to different accounts
-        tree.add_amount_to_account(
-            &Account::parse("assets:bank:checking"),
-            &CurrencyAmount {
-                value: "100.00".parse::<D128>().unwrap(), // 100.00
-                commodity: "USD".to_string(),
-            },
-        );
-
-        tree.add_amount_to_account(
-            &Account::parse("assets:bank:savings"),
-            &CurrencyAmount {
-                value: "200.00".parse::<D128>().unwrap(), // 200.00
-                commodity: "USD".to_string(),
-            },
-        );
-
-        tree.add_amount_to_account(
-            &Account::parse("assets:cash"),
-            &CurrencyAmount {
-                value: "50.00".parse::<D128>().unwrap(), // 50.00
-                commodity: "USD".to_string(),
-            },
-        );
-
-        let assets = &tree.children[0];
-        let bank = &assets.children[0];
-        let checking = &bank.children[0];
-        let savings = &bank.children[1];
-        let cash = &assets.children[1];
-
-        // Check individual account balances
-        assert_eq!(checking.balance.to_string(), "100.00 USD");
-        assert_eq!(savings.balance.to_string(), "200.00 USD");
-        assert_eq!(cash.balance.to_string(), "50.00 USD");
-
-        // Check that bank account has the sum of checking and savings
-        assert_eq!(bank.balance.to_string(), "300.00 USD");
-
-        // Check that assets account has the sum of all children
-        assert_eq!(assets.balance.to_string(), "350.00 USD");
-    }
-
-    #[test]
-    fn test_subtree_balance_multiple_commodities() {
-        use fastnum::D128;
-
-        let mut tree = TreeNode::new();
-        tree.add_account(&Account::parse("assets:bank:checking"));
-        tree.add_account(&Account::parse("assets:cash"));
-
-        // Add USD to checking
-        tree.add_amount_to_account(
-            &Account::parse("assets:bank:checking"),
-            &CurrencyAmount {
-                value: "100.00".parse::<D128>().unwrap(), // 100.00
-                commodity: "USD".to_string(),
-            },
-        );
-
-        // Add EUR to cash
-        tree.add_amount_to_account(
-            &Account::parse("assets:cash"),
-            &CurrencyAmount {
-                value: "50.00".parse::<D128>().unwrap(), // 50.00
-                commodity: "EUR".to_string(),
-            },
-        );
-
-        let assets = &tree.children[0];
-        let bank = &assets.children[0];
-        let checking = &bank.children[0];
-        let cash = &assets.children[1];
-
-        // Check individual account balances
-        assert_eq!(checking.balance.to_string(), "100.00 USD");
-        assert_eq!(cash.balance.to_string(), "50.00 EUR");
-
-        // Check that parent accounts track both commodities
-        assert_eq!(bank.balance.to_string(), "100.00 USD");
-        let assets_balance = assets.balance.to_string();
-        assert!(assets_balance.contains("100.00 USD") && assets_balance.contains("50.00 EUR"));
     }
 }
