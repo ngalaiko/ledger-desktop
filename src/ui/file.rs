@@ -31,7 +31,7 @@ impl LedgerFile {
                 });
 
                 this.chart_state.update(cx, |state, cx| {
-                    state.refresh_data(accounts_tree.selected_accounts(), cx);
+                    state.set_visible_accounts(accounts_tree.selected_accounts().clone(), cx);
                 });
             })
         })

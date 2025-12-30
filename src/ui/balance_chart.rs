@@ -1,6 +1,5 @@
 // todo:
 // - add legend for commodities
-// - configurable period (weekly, monthly)
 // - configurable resolution (daily, weekly, monthly)
 
 use core::fmt;
@@ -11,6 +10,7 @@ use std::{
     rc::Rc,
 };
 
+use chrono::Datelike;
 use fastnum::D128;
 use gpui::prelude::FluentBuilder;
 #[allow(clippy::wildcard_imports)]
@@ -43,6 +43,107 @@ const MIN_TICK_SPACING: usize = 10;
 /// Number of Y-axis value labels to display
 const Y_AXIS_LABEL_COUNT: usize = 5;
 
+pub struct BalanceChart {
+    state: Entity<State>,
+    plot_inner: PlotInner,
+    mouse_position: Option<Point<Pixels>>,
+    hovered_idx: Option<usize>,
+    colors: Vec<Hsla>,
+    visible_accounts: HashSet<Account>,
+    period: Period,
+}
+
+impl BalanceChart {
+    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
+        let colors = vec![
+            cx.theme().colors.red,
+            cx.theme().colors.green,
+            cx.theme().colors.blue,
+            cx.theme().colors.yellow,
+            cx.theme().colors.magenta,
+            cx.theme().colors.cyan,
+        ];
+
+        Self {
+            state,
+            plot_inner: PlotInner::new(colors.clone()),
+            mouse_position: None,
+            hovered_idx: None,
+            colors,
+            visible_accounts: HashSet::new(),
+            period: Period::D30,
+        }
+    }
+
+    fn set_period(&mut self, period: Period, cx: &mut Context<Self>) {
+        self.period = period;
+        self.refresh_data(cx);
+        cx.notify();
+    }
+
+    pub fn set_visible_accounts(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
+        self.visible_accounts = accounts;
+        self.refresh_data(cx);
+        cx.notify();
+    }
+
+    fn refresh_data(&mut self, cx: &mut Context<Self>) {
+        let state = self.state.read(cx);
+
+        // Collect all dates where any visible account has transactions
+        let mut all_dates = std::collections::BTreeSet::new();
+        for (account, date_balances) in state.running_balance.iter() {
+            if self
+                .visible_accounts
+                .iter()
+                .any(|visible_account| visible_account.is_parent_of(account))
+            {
+                for date in date_balances.keys() {
+                    all_dates.insert(*date);
+                }
+            }
+        }
+
+        if all_dates.is_empty() {
+            self.hovered_idx = None;
+            self.plot_inner.set_data(vec![], vec![]);
+            return;
+        }
+
+        let min_date = *all_dates.first().expect("at least one date exists");
+        let max_date = *all_dates.last().expect("at least one date exists");
+
+        // Calculate period start date based on max_date (latest transaction)
+        let period_start = self.period.start_date(max_date).unwrap_or(min_date);
+
+        // Apply period filter: use max of period_start and min_date
+        let filtered_start = period_start.max(min_date);
+
+        let mut plot_dates = Vec::new();
+        let mut plot_balances = Vec::new();
+
+        let mut current_date = filtered_start;
+        while current_date <= max_date {
+            // Aggregate balances from all visible accounts at this date
+            let mut daily_balance = Balance::new();
+
+            for visible_account in &self.visible_accounts {
+                let balance = state
+                    .running_balance
+                    .get_balance(visible_account, current_date);
+                daily_balance.add(&balance);
+            }
+
+            plot_dates.push(current_date);
+            plot_balances.push(daily_balance);
+
+            current_date += chrono::Duration::days(1);
+        }
+
+        self.plot_inner.set_data(plot_dates, plot_balances);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
 enum Period {
     WTD,
@@ -57,17 +158,45 @@ enum Period {
 }
 
 impl Period {
-    pub fn duration(&self) -> chrono::Duration {
+    pub fn start_date(&self, reference_date: chrono::NaiveDate) -> Option<chrono::NaiveDate> {
         match self {
-            Period::WTD => chrono::Duration::days(7),
-            Period::D7 => chrono::Duration::days(7),
-            Period::MTD => chrono::Duration::days(30),
-            Period::D30 => chrono::Duration::days(30),
-            Period::D90 => chrono::Duration::days(90),
-            Period::YTD => chrono::Duration::days(365),
-            Period::Y1 => chrono::Duration::days(365),
-            Period::Y3 => chrono::Duration::days(365 * 3),
-            Period::All => chrono::Duration::MAX,
+            Period::WTD => {
+                // Week-to-date: start of current week (Monday)
+                let days_from_monday = reference_date.weekday().num_days_from_monday();
+                Some(reference_date - chrono::Duration::days(days_from_monday as i64))
+            }
+            Period::D7 => {
+                // Last 7 days
+                Some(reference_date - chrono::Duration::days(7))
+            }
+            Period::MTD => {
+                // Month-to-date: first day of current month
+                reference_date.with_day(1)
+            }
+            Period::D30 => {
+                // Last 30 days
+                Some(reference_date - chrono::Duration::days(30))
+            }
+            Period::D90 => {
+                // Last 90 days
+                Some(reference_date - chrono::Duration::days(90))
+            }
+            Period::YTD => {
+                // Year-to-date: January 1st of current year
+                reference_date.with_month(1).and_then(|d| d.with_day(1))
+            }
+            Period::Y1 => {
+                // Last 1 year
+                Some(reference_date - chrono::Duration::days(365))
+            }
+            Period::Y3 => {
+                // Last 3 years
+                Some(reference_date - chrono::Duration::days(365 * 3))
+            }
+            Period::All => {
+                // No filtering
+                None
+            }
         }
     }
 }
@@ -86,84 +215,6 @@ impl fmt::Display for Period {
             Period::All => "All",
         };
         write!(f, "{s}")
-    }
-}
-
-pub struct BalanceChart {
-    state: Entity<State>,
-    plot_inner: PlotInner,
-    mouse_position: Option<Point<Pixels>>,
-    hovered_idx: Option<usize>,
-    colors: Vec<Hsla>,
-}
-
-impl BalanceChart {
-    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
-        let colors = vec![
-            cx.theme().colors.red,
-            cx.theme().colors.green,
-            cx.theme().colors.blue,
-            cx.theme().colors.yellow,
-            cx.theme().colors.magenta,
-            cx.theme().colors.cyan,
-        ];
-
-        Self {
-            state,
-            plot_inner: PlotInner::new(Period::D30, colors.clone()),
-            mouse_position: None,
-            hovered_idx: None,
-            colors,
-        }
-    }
-
-    pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
-        let state = self.state.read(cx);
-
-        // Collect all dates where any visible account has transactions
-        let mut all_dates = std::collections::BTreeSet::new();
-        for (account, date_balances) in state.running_balance.iter() {
-            if visible_accounts
-                .iter()
-                .any(|visible_account| visible_account.is_parent_of(account))
-            {
-                for date in date_balances.keys() {
-                    all_dates.insert(*date);
-                }
-            }
-        }
-
-        if all_dates.is_empty() {
-            self.plot_inner.set_data(vec![], vec![]);
-            cx.notify();
-            return;
-        }
-
-        let min_date = *all_dates.first().expect("at least one date exists");
-        let max_date = *all_dates.last().expect("at least one date exists");
-
-        let mut plot_dates = Vec::new();
-        let mut plot_balances = Vec::new();
-
-        let mut current_date = min_date;
-        while current_date <= max_date {
-            // Aggregate balances from all visible accounts at this date
-            let mut daily_balance = Balance::new();
-
-            for visible_account in visible_accounts {
-                let balance = state
-                    .running_balance
-                    .get_balance(visible_account, current_date);
-                daily_balance.add(&balance);
-            }
-
-            plot_dates.push(current_date);
-            plot_balances.push(daily_balance);
-
-            current_date += chrono::Duration::days(1);
-        }
-
-        self.plot_inner.set_data(plot_dates, plot_balances);
     }
 }
 
@@ -189,7 +240,9 @@ impl Render for BalanceChart {
         let plot_inner = self.plot_inner.clone();
         let tooltip_data = {
             match (self.mouse_position, plot_inner.bounds.get()) {
-                (Some(mouse_position), Some(bounds)) => Some((mouse_position, bounds)),
+                (Some(mouse_position), Some(bounds)) if !plot_inner.dates.is_empty() => {
+                    Some((mouse_position, bounds))
+                }
                 _ => None,
             }
         };
@@ -197,8 +250,7 @@ impl Render for BalanceChart {
             .id("balance_chart")
             .size_full()
             .on_action(cx.listener(|this, period: &SelectPeriod, _window, cx| {
-                this.plot_inner.set_period(period.period);
-                cx.notify();
+                this.set_period(period.period, cx);
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
                 // Update mouse position
@@ -226,7 +278,7 @@ impl Render for BalanceChart {
             .child(
                 h_flex().justify_end().child(
                     Button::new("period-selector")
-                        .label(plot_inner.period.to_string())
+                        .label(self.period.to_string())
                         .ghost()
                         .dropdown_menu(|menu, _window, _cx| {
                             [
@@ -329,8 +381,6 @@ impl Render for BalanceChart {
 struct PlotInner {
     colors: Vec<Hsla>,
 
-    period: Period,
-
     dates: Vec<chrono::NaiveDate>,
     balances: Vec<Balance>,
 
@@ -344,10 +394,9 @@ struct PlotInner {
 }
 
 impl PlotInner {
-    pub fn new(period: Period, colors: Vec<Hsla>) -> Self {
+    pub fn new(colors: Vec<Hsla>) -> Self {
         Self {
             colors,
-            period,
             dates: vec![],
             balances: vec![],
             y_min: 0.0,
@@ -357,10 +406,6 @@ impl PlotInner {
             cached_x_scale: Rc::new(RefCell::new(None)),
             cached_y_scale: Rc::new(RefCell::new(None)),
         }
-    }
-
-    pub fn set_period(&mut self, period: Period) {
-        self.period = period;
     }
 
     pub fn set_data(&mut self, dates: Vec<chrono::NaiveDate>, balances: Vec<Balance>) {
