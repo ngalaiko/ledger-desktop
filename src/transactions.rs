@@ -21,7 +21,9 @@ pub enum ParseTransactionError {
 
 #[derive(Debug, Clone)]
 pub struct Transaction {
+    #[allow(dead_code)]
     pub file: path::PathBuf,
+    #[allow(dead_code)]
     pub line: i64,
     pub time: chrono::NaiveDate,
     pub description: String,
@@ -84,6 +86,7 @@ pub enum ParsePostingError {
 pub struct Posting {
     pub account: Account,
     pub amount: Amount,
+    #[allow(dead_code)]
     pub note: Option<String>,
 }
 
@@ -149,7 +152,9 @@ impl CurrencyAmount {
         let value = parts.remove(0);
         let value = value.replace(",", ""); // Remove commas for thousands separators
 
-        let value = value.parse::<D128>().map_err(|e| ParseAmounError::InvalidDecimal(e.to_string()))?;
+        let value = value
+            .parse::<D128>()
+            .map_err(|e| ParseAmounError::InvalidDecimal(e.to_string()))?;
         if parts.is_empty() {
             return Ok(CurrencyAmount {
                 value,
@@ -264,10 +269,7 @@ mod tests {
     fn test_parse_currency_amount_no_commodity() {
         let amount_str = "-1,020.48";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(
-            amount.value.value,
-            "-1020.48".parse::<D128>().unwrap()
-        );
+        assert_eq!(amount.value.value, "-1020.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "");
         assert!(amount.price.is_none());
         assert!(amount.date.is_none());
@@ -277,10 +279,7 @@ mod tests {
     fn test_parse_currency_amount_thousand() {
         let amount_str = "-1,020.48 GEL";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(
-            amount.value.value,
-            "-1020.48".parse::<D128>().unwrap()
-        );
+        assert_eq!(amount.value.value, "-1020.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_none());
         assert!(amount.date.is_none());
@@ -290,10 +289,7 @@ mod tests {
     fn test_parse_currency_amount_simple() {
         let amount_str = "-20.48 GEL";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(
-            amount.value.value,
-            "-20.48".parse::<D128>().unwrap()
-        );
+        assert_eq!(amount.value.value, "-20.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_none());
         assert!(amount.date.is_none());
@@ -303,17 +299,11 @@ mod tests {
     fn test_parse_amount_priced() {
         let amount_str = "-20.48 GEL {3.6041025641 SEK} [2025/12/03]";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(
-            amount.value.value,
-            "-20.48".parse::<D128>().unwrap()
-        );
+        assert_eq!(amount.value.value, "-20.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
         assert!(amount.price.is_some());
         let price = amount.price.as_ref().unwrap();
-        assert_eq!(
-            price.value,
-            "3.6041025641".parse::<D128>().unwrap()
-        );
+        assert_eq!(price.value, "3.6041025641".parse::<D128>().unwrap());
         assert_eq!(price.commodity, "SEK");
         assert!(amount.date.is_some());
         let date = amount.date.as_ref().unwrap();
@@ -324,10 +314,7 @@ mod tests {
     fn test_parse_amount_long_price() {
         let amount_str = "194.21240000 USDT {9.525653356840242950501615756769 SEK} [2025/09/17]";
         let amount = Amount::parse(amount_str).expect("should parse amount");
-        assert_eq!(
-            amount.value.value,
-            "194.21240000".parse::<D128>().unwrap()
-        );
+        assert_eq!(amount.value.value, "194.21240000".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "USDT");
         assert!(amount.price.is_some());
         let price = amount.price.as_ref().unwrap();

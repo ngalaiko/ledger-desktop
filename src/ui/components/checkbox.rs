@@ -1,6 +1,7 @@
+#![allow(dead_code)]
+
 /// This is a copy of https://github.com/longbridge/gpui-component/blob/v0.5.0/crates/ui/src/checkbox.rs
 /// with Indeterminate state support
-
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
@@ -118,7 +119,10 @@ impl Checkbox {
     /// Set the click handler for the checkbox.
     ///
     /// The `CheckboxState` parameter indicates the new state after the click.
-    pub fn on_click(mut self, handler: impl Fn(CheckboxState, &mut Window, &mut App) + 'static) -> Self {
+    pub fn on_click(
+        mut self,
+        handler: impl Fn(CheckboxState, &mut Window, &mut App) + 'static,
+    ) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
     }
