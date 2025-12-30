@@ -25,7 +25,7 @@ use gpui_component::{
         tooltip::{CrossLine, Dot, Tooltip, TooltipPosition},
         AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle,
     },
-    StyledExt,
+    v_flex, StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
 
@@ -246,134 +246,141 @@ impl Render for BalanceChart {
                 _ => None,
             }
         };
-        div()
-            .id("balance_chart")
+        v_flex()
             .size_full()
-            .on_action(cx.listener(|this, period: &SelectPeriod, _window, cx| {
-                this.set_period(period.period, cx);
-            }))
-            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
-                // Update mouse position
-                this.mouse_position = Some(event.position);
+            .child(
+                h_flex()
+                    .justify_end()
+                    .child(
+                        Button::new("period-selector")
+                            .label(self.period.to_string())
+                            .ghost()
+                            .dropdown_menu(|menu, _window, _cx| {
+                                [
+                                    Period::WTD,
+                                    Period::D7,
+                                    Period::MTD,
+                                    Period::D30,
+                                    Period::D90,
+                                    Period::YTD,
+                                    Period::Y1,
+                                    Period::Y3,
+                                    Period::All,
+                                ]
+                                .iter()
+                                .fold(menu, |menu, &period| {
+                                    menu.menu(period.to_string(), Box::new(SelectPeriod { period }))
+                                })
+                            }),
+                    )
+                    .on_action(cx.listener(|this, period: &SelectPeriod, _window, cx| {
+                        this.set_period(period.period, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .id("balance_chart")
+                    .size_full()
+                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
+                        // Update mouse position
+                        this.mouse_position = Some(event.position);
 
-                // Only notify if the hovered data point changed
-                if let (Some(mouse_pos), Some(bounds)) =
-                    (this.mouse_position, this.plot_inner.bounds.get())
-                {
-                    if !this.plot_inner.dates.is_empty() {
-                        let mouse_x = mouse_pos.x.as_f32() - bounds.origin.x.as_f32();
-                        let (x_scale, _) = this.plot_inner.get_or_compute_scales(&bounds);
-                        let new_hovered_idx = x_scale.least_index(mouse_x);
+                        // Only notify if the hovered data point changed
+                        if let (Some(mouse_pos), Some(bounds)) =
+                            (this.mouse_position, this.plot_inner.bounds.get())
+                        {
+                            if !this.plot_inner.dates.is_empty() {
+                                let mouse_x = mouse_pos.x.as_f32() - bounds.origin.x.as_f32();
+                                let (x_scale, _) = this.plot_inner.get_or_compute_scales(&bounds);
+                                let new_hovered_idx = x_scale.least_index(mouse_x);
 
-                        if this.hovered_idx != Some(new_hovered_idx) {
-                            this.hovered_idx = Some(new_hovered_idx);
+                                if this.hovered_idx != Some(new_hovered_idx) {
+                                    this.hovered_idx = Some(new_hovered_idx);
+                                    cx.notify();
+                                }
+                            }
+                        } else {
+                            // No bounds yet, notify to trigger initial render
                             cx.notify();
                         }
-                    }
-                } else {
-                    // No bounds yet, notify to trigger initial render
-                    cx.notify();
-                }
-            }))
-            .child(
-                h_flex().justify_end().child(
-                    Button::new("period-selector")
-                        .label(self.period.to_string())
-                        .ghost()
-                        .dropdown_menu(|menu, _window, _cx| {
-                            [
-                                Period::WTD,
-                                Period::D7,
-                                Period::MTD,
-                                Period::D30,
-                                Period::D90,
-                                Period::YTD,
-                                Period::Y1,
-                                Period::Y3,
-                                Period::All,
-                            ]
+                    }))
+                    .child(plot_inner)
+                    .when_some(tooltip_data, |this, tooltip_data| {
+                        let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
+                        let mouse_y = tooltip_data.0.y.as_f32() - tooltip_data.1.origin.y.as_f32();
+                        let width = calc_width(&tooltip_data.1);
+
+                        let (x_scale, y_scale) =
+                            self.plot_inner.get_or_compute_scales(&tooltip_data.1);
+
+                        let hovered_idx = x_scale.least_index(mouse_x);
+
+                        let date = self.plot_inner.dates[hovered_idx];
+                        let balances = &self.plot_inner.balances[hovered_idx];
+
+                        let x_pos = x_scale
+                            .tick(&date)
+                            .expect("hovered date should have x position");
+
+                        // Create CrossLine for the vertical crosshair
+                        let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y)));
+
+                        // Create Dot components for each data point
+                        let dots: Vec<Dot> = balances
                             .iter()
-                            .fold(menu, |menu, &period| {
-                                menu.menu(period.to_string(), Box::new(SelectPeriod { period }))
+                            .flat_map(|amount| {
+                                let color = get_color(&self.colors, &amount.commodity);
+                                y_scale.tick(&amount.value.to_f64()).map(|y_pos| {
+                                    // let color = self.colors[idx % self.colors.len()];
+                                    Dot::new(point(px(x_pos), px(y_pos)))
+                                        .size(px(10.0))
+                                        .fill(color)
+                                        .stroke(cx.theme().background)
+                                })
                             })
-                        }),
-                ),
-            )
-            .child(plot_inner)
-            .when_some(tooltip_data, |this, tooltip_data| {
-                let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
-                let mouse_y = tooltip_data.0.y.as_f32() - tooltip_data.1.origin.y.as_f32();
-                let width = calc_width(&tooltip_data.1);
+                            .collect();
 
-                let (x_scale, y_scale) = self.plot_inner.get_or_compute_scales(&tooltip_data.1);
+                        // Determine tooltip position based on mouse location
+                        let position = if mouse_x < width / 2.0 {
+                            TooltipPosition::Right
+                        } else {
+                            TooltipPosition::Left
+                        };
 
-                let hovered_idx = x_scale.least_index(mouse_x);
+                        this.child(
+                            Tooltip::new()
+                                .position(position)
+                                .gap(px(20.0))
+                                .cross_line(cross_line)
+                                .dots(dots)
+                                .p_3()
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .bg(cx.theme().background)
+                                .rounded_lg()
+                                .shadow_lg()
+                                .child(div().text_sm().font_semibold().child(date.to_string()))
+                                .children(balances.iter().map(|amount| {
+                                    let color = get_color(&self.colors, &amount.commodity);
 
-                let date = self.plot_inner.dates[hovered_idx];
-                let balances = &self.plot_inner.balances[hovered_idx];
-
-                let x_pos = x_scale
-                    .tick(&date)
-                    .expect("hovered date should have x position");
-
-                // Create CrossLine for the vertical crosshair
-                let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y)));
-
-                // Create Dot components for each data point
-                let dots: Vec<Dot> = balances
-                    .iter()
-                    .flat_map(|amount| {
-                        let color = get_color(&self.colors, &amount.commodity);
-                        y_scale.tick(&amount.value.to_f64()).map(|y_pos| {
-                            // let color = self.colors[idx % self.colors.len()];
-                            Dot::new(point(px(x_pos), px(y_pos)))
-                                .size(px(10.0))
-                                .fill(color)
-                                .stroke(cx.theme().background)
-                        })
-                    })
-                    .collect();
-
-                // Determine tooltip position based on mouse location
-                let position = if mouse_x < width / 2.0 {
-                    TooltipPosition::Right
-                } else {
-                    TooltipPosition::Left
-                };
-
-                this.child(
-                    Tooltip::new()
-                        .position(position)
-                        .gap(px(20.0))
-                        .cross_line(cross_line)
-                        .dots(dots)
-                        .p_3()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .bg(cx.theme().background)
-                        .rounded_lg()
-                        .shadow_lg()
-                        .child(div().text_sm().font_semibold().child(date.to_string()))
-                        .children(balances.iter().map(|amount| {
-                            let color = get_color(&self.colors, &amount.commodity);
-
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(div().text_xs().text_color(color).child("—"))
-                                .child(
                                     h_flex()
                                         .gap_2()
-                                        .text_xs()
-                                        .font_medium()
-                                        .w_full()
-                                        .justify_between()
-                                        .child(amount.commodity.to_string())
-                                        .child(amount.value.to_string()),
-                                )
-                        })),
-                )
-            })
+                                        .items_center()
+                                        .child(div().text_xs().text_color(color).child("—"))
+                                        .child(
+                                            h_flex()
+                                                .gap_2()
+                                                .text_xs()
+                                                .font_medium()
+                                                .w_full()
+                                                .justify_between()
+                                                .child(amount.commodity.to_string())
+                                                .child(amount.value.to_string()),
+                                        )
+                                })),
+                        )
+                    }),
+            )
     }
 }
 
