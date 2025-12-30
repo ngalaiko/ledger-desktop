@@ -4,7 +4,7 @@
 // - configurable period (weekly, monthly)
 // - configurable resolution (daily, weekly, monthly)
 
-use std::{cell::Cell, collections::HashSet, rc::Rc};
+use std::{cell::{Cell, RefCell}, rc::Rc};
 
 use fastnum::D128;
 use gpui::prelude::FluentBuilder;
@@ -15,7 +15,7 @@ use gpui_component::{
     plot::{
         scale::{Scale, ScaleLinear, ScalePoint},
         shape::Line,
-        AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle, AXIS_GAP,
+        AxisText, IntoPlot, Plot, PlotAxis, StrokeStyle,
     },
     v_flex, StyledExt,
 };
@@ -26,6 +26,8 @@ use crate::transactions::Transaction;
 // Constants for chart layout
 /// Padding around the plot area in pixels
 const PLOT_PADDING: f32 = 10.0;
+/// Gap reserved for axis labels
+const AXIS_GAP: f32 = 30.0;
 /// Minimum number of data points before skipping ticks on X-axis
 const MIN_TICK_SPACING: usize = 10;
 /// Number of Y-axis value labels to display
@@ -34,6 +36,7 @@ const Y_AXIS_LABEL_COUNT: usize = 5;
 pub struct BalanceChart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
+    hovered_idx: Option<usize>,
     colors: Vec<Hsla>,
 }
 
@@ -51,6 +54,7 @@ impl BalanceChart {
         Self {
             plot_inner: PlotInner::new(colors.clone()),
             mouse_position: None,
+            hovered_idx: None,
             colors,
         }
     }
@@ -61,6 +65,7 @@ impl BalanceChart {
         if transactions.is_empty() {
             self.plot_inner.set_data(vec![], vec![], vec![]);
             self.mouse_position = None;
+            self.hovered_idx = None;
             cx.notify();
             return;
         }
@@ -145,7 +150,23 @@ impl Render for BalanceChart {
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
                 // Update mouse position
                 this.mouse_position = Some(event.position);
-                cx.notify();
+
+                // Only notify if the hovered data point changed
+                if let (Some(mouse_pos), Some(bounds)) = (this.mouse_position, this.plot_inner.bounds.get()) {
+                    if !this.plot_inner.dates.is_empty() {
+                        let mouse_x = mouse_pos.x.as_f32() - bounds.origin.x.as_f32();
+                        let (x_scale, _) = this.plot_inner.get_or_compute_scales(&bounds);
+                        let new_hovered_idx = x_scale.least_index(mouse_x);
+
+                        if this.hovered_idx != Some(new_hovered_idx) {
+                            this.hovered_idx = Some(new_hovered_idx);
+                            cx.notify();
+                        }
+                    }
+                } else {
+                    // No bounds yet, notify to trigger initial render
+                    cx.notify();
+                }
             }))
             .child(plot_inner)
             .when_some(tooltip_data, |this, tooltip_data| {
@@ -154,8 +175,7 @@ impl Render for BalanceChart {
                 let width = calc_width(&tooltip_data.1);
                 let height = calc_height(&tooltip_data.1);
 
-                let x_scale = calc_x_scale(&tooltip_data.1, &self.plot_inner.dates);
-                let y_scale = calc_y_scale(&tooltip_data.1, &self.plot_inner.all_balances);
+                let (x_scale, y_scale) = self.plot_inner.get_or_compute_scales(&tooltip_data.1);
 
                 let hovered_idx = x_scale.least_index(mouse_x);
 
@@ -258,6 +278,9 @@ struct PlotInner {
     y_max: f64,
 
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    cached_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    cached_x_scale: Rc<RefCell<Option<ScalePoint<chrono::NaiveDate>>>>,
+    cached_y_scale: Rc<RefCell<Option<ScaleLinear<f64>>>>,
 }
 
 impl PlotInner {
@@ -271,6 +294,9 @@ impl PlotInner {
             y_max: 0.0,
             commodities: vec![],
             bounds: Rc::new(Cell::new(None)),
+            cached_bounds: Rc::new(Cell::new(None)),
+            cached_x_scale: Rc::new(RefCell::new(None)),
+            cached_y_scale: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -287,13 +313,11 @@ impl PlotInner {
             .collect();
         self.commodities = commodities;
 
-        let mut all_unique_balances: HashSet<D128> = HashSet::new();
         let mut min_balance = D128::MAX;
         let mut max_balance = D128::MIN;
 
         for daily_balances in &balances {
             for &balance in daily_balances {
-                all_unique_balances.insert(balance);
                 if balance < min_balance {
                     min_balance = balance;
                 }
@@ -303,9 +327,42 @@ impl PlotInner {
             }
         }
 
-        self.all_balances = all_unique_balances.iter().map(|b| b.to_f64()).collect();
         self.y_min = min_balance.to_f64();
         self.y_max = max_balance.to_f64();
+        self.all_balances = vec![self.y_min, self.y_max];
+
+        // Invalidate cached scales since data changed
+        self.cached_bounds.set(None);
+        self.cached_x_scale.replace(None);
+        self.cached_y_scale.replace(None);
+    }
+
+    fn get_or_compute_scales(
+        &self,
+        bounds: &Bounds<Pixels>,
+    ) -> (ScalePoint<chrono::NaiveDate>, ScaleLinear<f64>) {
+        // Check if we need to recompute scales
+        let needs_recompute = match self.cached_bounds.get() {
+            Some(cached) => cached != *bounds,
+            None => true,
+        };
+
+        if needs_recompute {
+            let x_scale = calc_x_scale(bounds, &self.dates);
+            let y_scale = calc_y_scale(bounds, &self.all_balances);
+
+            self.cached_bounds.set(Some(*bounds));
+            self.cached_x_scale.replace(Some(x_scale.clone()));
+            self.cached_y_scale.replace(Some(y_scale.clone()));
+
+            (x_scale, y_scale)
+        } else {
+            // Safe to unwrap because we know cached values exist
+            (
+                self.cached_x_scale.borrow().as_ref().unwrap().clone(),
+                self.cached_y_scale.borrow().as_ref().unwrap().clone(),
+            )
+        }
     }
 }
 
@@ -314,7 +371,7 @@ fn calc_width(bounds: &Bounds<Pixels>) -> f32 {
 }
 
 fn calc_height(bounds: &Bounds<Pixels>) -> f32 {
-    bounds.size.height.as_f32() - AXIS_GAP - PLOT_PADDING
+    bounds.size.height.as_f32() - PLOT_PADDING - AXIS_GAP
 }
 
 fn calc_x_scale(
@@ -341,10 +398,8 @@ impl Plot for PlotInner {
         // Calculate drawing area with padding
         let height = calc_height(&bounds);
 
-        // Create X scale for dates (categorical)
-        let x_scale = calc_x_scale(&bounds, &self.dates);
-        // Create Y scale for balances (linear)
-        let y_scale = calc_y_scale(&bounds, &self.all_balances);
+        // Get or compute cached scales
+        let (x_scale, y_scale) = self.get_or_compute_scales(&bounds);
 
         // Create Y-axis labels
         let y_labels: Vec<AxisText> = (0..Y_AXIS_LABEL_COUNT)
