@@ -12,6 +12,9 @@ thiserror = "2.0"
 chrono = "0.4"
 fastnum = "0.7"
 
+serde = "1.0"
+schemars = "1.2"
+
 futures-lite = "2.6"
 async-process = "2.5"
 async-channel = "2.5"

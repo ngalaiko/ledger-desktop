@@ -4,6 +4,7 @@
 // - configurable period (weekly, monthly)
 // - configurable resolution (daily, weekly, monthly)
 
+use core::fmt;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -14,7 +15,9 @@ use gpui::prelude::FluentBuilder;
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
+    button::{Button, ButtonVariants},
     h_flex,
+    menu::DropdownMenu,
     plot::{
         scale::{Scale, ScaleLinear, ScalePoint},
         shape::Line,
@@ -37,6 +40,52 @@ const MIN_TICK_SPACING: usize = 10;
 /// Number of Y-axis value labels to display
 const Y_AXIS_LABEL_COUNT: usize = 5;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
+enum Period {
+    WTD,
+    D7,
+    MTD,
+    D30,
+    D90,
+    YTD,
+    Y1,
+    Y3,
+    All,
+}
+
+impl Period {
+    pub fn duration(&self) -> chrono::Duration {
+        match self {
+            Period::WTD => chrono::Duration::days(7),
+            Period::D7 => chrono::Duration::days(7),
+            Period::MTD => chrono::Duration::days(30),
+            Period::D30 => chrono::Duration::days(30),
+            Period::D90 => chrono::Duration::days(90),
+            Period::YTD => chrono::Duration::days(365),
+            Period::Y1 => chrono::Duration::days(365),
+            Period::Y3 => chrono::Duration::days(365 * 3),
+            Period::All => chrono::Duration::MAX,
+        }
+    }
+}
+
+impl fmt::Display for Period {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Period::WTD => "WTD",
+            Period::D7 => "7D",
+            Period::MTD => "MTD",
+            Period::D30 => "30D",
+            Period::D90 => "90D",
+            Period::YTD => "YTD",
+            Period::Y1 => "1Y",
+            Period::Y3 => "3Y",
+            Period::All => "All",
+        };
+        write!(f, "{s}")
+    }
+}
+
 pub struct BalanceChart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
@@ -56,7 +105,7 @@ impl BalanceChart {
         ];
 
         Self {
-            plot_inner: PlotInner::new(colors.clone()),
+            plot_inner: PlotInner::new(Period::D30, colors.clone()),
             mouse_position: None,
             hovered_idx: None,
             colors,
@@ -139,6 +188,12 @@ impl BalanceChart {
     }
 }
 
+#[derive(Clone, PartialEq, serde::Deserialize, schemars::JsonSchema, Action)]
+#[action(namespace = balance_chart)]
+struct SelectPeriod {
+    period: Period,
+}
+
 impl Render for BalanceChart {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();
@@ -151,6 +206,10 @@ impl Render for BalanceChart {
         div()
             .id("balance_chart")
             .size_full()
+            .on_action(cx.listener(|this, period: &SelectPeriod, _window, cx| {
+                this.plot_inner.set_period(period.period);
+                cx.notify();
+            }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
                 // Update mouse position
                 this.mouse_position = Some(event.position);
@@ -174,6 +233,30 @@ impl Render for BalanceChart {
                     cx.notify();
                 }
             }))
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("period-selector")
+                        .label(plot_inner.period.to_string())
+                        .ghost()
+                        .dropdown_menu(|menu, _window, _cx| {
+                            [
+                                Period::WTD,
+                                Period::D7,
+                                Period::MTD,
+                                Period::D30,
+                                Period::D90,
+                                Period::YTD,
+                                Period::Y1,
+                                Period::Y3,
+                                Period::All,
+                            ]
+                            .iter()
+                            .fold(menu, |menu, &period| {
+                                menu.menu(period.to_string(), Box::new(SelectPeriod { period }))
+                            })
+                        }),
+                ),
+            )
             .child(plot_inner)
             .when_some(tooltip_data, |this, tooltip_data| {
                 let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
@@ -215,40 +298,39 @@ impl Render for BalanceChart {
                     TooltipPosition::Left
                 };
 
-                // Build the Tooltip component
-                let tooltip = Tooltip::new()
-                    .position(position)
-                    .gap(px(20.0))
-                    .cross_line(cross_line)
-                    .dots(dots)
-                    .p_3()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
-                    .rounded_lg()
-                    .shadow_lg()
-                    .child(div().text_sm().font_semibold().child(date.to_string()))
-                    .children(balances.iter().enumerate().map(|(idx, balance)| {
-                        let commodity = &commodities[idx];
-                        let color = self.colors[idx % self.colors.len()];
+                this.child(
+                    Tooltip::new()
+                        .position(position)
+                        .gap(px(20.0))
+                        .cross_line(cross_line)
+                        .dots(dots)
+                        .p_3()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().background)
+                        .rounded_lg()
+                        .shadow_lg()
+                        .child(div().text_sm().font_semibold().child(date.to_string()))
+                        .children(balances.iter().enumerate().map(|(idx, balance)| {
+                            let commodity = &commodities[idx];
+                            let color = self.colors[idx % self.colors.len()];
 
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(div().text_xs().text_color(color).child("—"))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .text_xs()
-                                    .font_medium()
-                                    .w_full()
-                                    .justify_between()
-                                    .child(commodity.to_string())
-                                    .child(balance.to_string()),
-                            )
-                    }));
-
-                this.child(tooltip)
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(div().text_xs().text_color(color).child("—"))
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .text_xs()
+                                        .font_medium()
+                                        .w_full()
+                                        .justify_between()
+                                        .child(commodity.to_string())
+                                        .child(balance.to_string()),
+                                )
+                        })),
+                )
             })
     }
 }
@@ -256,6 +338,8 @@ impl Render for BalanceChart {
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
     colors: Vec<Hsla>,
+
+    period: Period,
 
     dates: Vec<chrono::NaiveDate>,
     balances: Vec<Vec<f64>>,
@@ -272,9 +356,10 @@ struct PlotInner {
 }
 
 impl PlotInner {
-    pub fn new(colors: Vec<Hsla>) -> Self {
+    pub fn new(period: Period, colors: Vec<Hsla>) -> Self {
         Self {
             colors,
+            period,
             dates: vec![],
             balances: vec![],
             all_balances: vec![],
@@ -286,6 +371,10 @@ impl PlotInner {
             cached_x_scale: Rc::new(RefCell::new(None)),
             cached_y_scale: Rc::new(RefCell::new(None)),
         }
+    }
+
+    pub fn set_period(&mut self, period: Period) {
+        self.period = period;
     }
 
     pub fn set_data(
@@ -432,15 +521,15 @@ impl Plot for PlotInner {
             .collect::<Vec<_>>();
 
         // Draw a line for each commodity
-        for (commodity_idx, _commodity) in self.commodities.iter().enumerate() {
-            let color = self.colors[commodity_idx % self.colors.len()];
+        for idx in 0..self.commodities.len() {
+            let color = self.colors[idx % self.colors.len()];
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
             Line::new()
                 .data(data.clone())
                 .x(move |d| x_scale.tick(&d.0))
-                .y(move |d| d.1.get(commodity_idx).and_then(|v| y_scale.tick(v)))
+                .y(move |d| d.1.get(idx).and_then(|v| y_scale.tick(v)))
                 .stroke(color)
                 .stroke_width(px(2.0))
                 .stroke_style(StrokeStyle::Linear)
