@@ -1,7 +1,3 @@
-// todo:
-// - add legend for commodities
-// - configurable resolution (daily, weekly, monthly)
-
 use core::fmt;
 use std::{
     cell::{Cell, RefCell},
