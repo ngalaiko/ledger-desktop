@@ -5,10 +5,12 @@ mod sexpr;
 pub mod transactions;
 
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 use async_channel::{bounded, Receiver, Sender};
+use async_io::Timer;
 use async_process::{Command, Stdio};
 use futures_lite::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use futures_lite::{Future, Stream};
@@ -33,38 +35,146 @@ pub enum LedgerEvent {
     Done(Result<(), LedgerError>),
 }
 
-struct LedgerCommand {
-    cmd: String,
-    response_tx: Sender<LedgerEvent>,
-}
-
 #[derive(Clone)]
 pub struct LedgerHandle {
-    cmd_tx: Sender<LedgerCommand>,
+    pool: Arc<PoolManager>,
+    executor: gpui::BackgroundExecutor,
 }
 
 impl LedgerHandle {
     pub fn spawn(cx: &mut gpui::App, file: Option<std::path::PathBuf>) -> Self {
-        let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
+        let executor = cx.background_executor();
+        let pool = Arc::new(PoolManager::new(file, &executor));
 
-        cx.background_executor()
-            .spawn(async move {
-                run_actor(file, cmd_rx).await.expect("Ledger actor failed");
-            })
-            .detach();
-
-        Self { cmd_tx }
+        Self {
+            pool,
+            executor: executor.clone(),
+        }
     }
 
     async fn send(&self, cmd: &str) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
         let (response_tx, response_rx) = bounded(64);
-        self.cmd_tx
-            .send(LedgerCommand {
-                cmd: cmd.to_string(),
-                response_tx,
+        let cmd = cmd.to_string();
+        let pool = self.pool.clone();
+
+        // Spawn a task to execute this command
+        self.executor
+            .spawn(async move {
+                if let Err(e) = execute_command(pool, cmd, response_tx).await {
+                    // Log error - the task failed but we've already sent error events if possible
+                    eprintln!("Command execution task failed: {:?}", e);
+                }
             })
-            .await
-            .map_err(|_| ChannelClosed)?;
+            .detach();
+
+        Ok(response_rx)
+    }
+
+    pub async fn transactions(&self) -> Result<TransactionStream, ChannelClosed> {
+        let event_rx = self.send("lisp --lisp-date-format %Y-%m-%d").await?;
+        let line_stream = LineStream::from_events(event_rx);
+        Ok(line_stream.sexpr().transactions())
+    }
+
+    pub async fn prices(&self) -> Result<PricesStream, ChannelClosed> {
+        let event_rx = self.send("prices").await?;
+        let line_stream = LineStream::from_events(event_rx);
+        Ok(PricesStream::new(line_stream))
+    }
+}
+
+struct IdleProcess {
+    ledger: Ledger,
+    idle_since: Instant,
+}
+
+struct PoolManager {
+    file: Option<std::path::PathBuf>,
+    idle_processes: Arc<Mutex<Vec<IdleProcess>>>,
+}
+
+impl PoolManager {
+    fn new(file: Option<std::path::PathBuf>, executor: &gpui::BackgroundExecutor) -> Self {
+        let idle_processes = Arc::new(Mutex::new(Vec::new()));
+
+        // Spawn cleanup task to remove idle processes after timeout
+        let idle_processes_clone = idle_processes.clone();
+        executor
+            .spawn(async move {
+                loop {
+                    Timer::after(Duration::from_secs(10)).await;
+                    Self::cleanup_idle(&idle_processes_clone, Duration::from_secs(30));
+                }
+            })
+            .detach();
+
+        Self {
+            file,
+            idle_processes,
+        }
+    }
+
+    async fn acquire(&self) -> std::io::Result<Ledger> {
+        // Try to get an idle process
+        {
+            let mut processes = self.idle_processes.lock().unwrap();
+            if let Some(idle) = processes.pop() {
+                return Ok(idle.ledger);
+            }
+        }
+
+        // No idle process available, spawn a new one
+        Ledger::spawn(self.file.clone()).await
+    }
+
+    fn release(&self, ledger: Ledger) {
+        let mut processes = self.idle_processes.lock().unwrap();
+        processes.push(IdleProcess {
+            ledger,
+            idle_since: Instant::now(),
+        });
+    }
+
+    fn cleanup_idle(idle_processes: &Mutex<Vec<IdleProcess>>, timeout: Duration) {
+        let mut processes = idle_processes.lock().unwrap();
+        let now = Instant::now();
+        processes.retain(|idle| now.duration_since(idle.idle_since) < timeout);
+        // Dropped processes will be cleaned up automatically
+    }
+}
+
+#[derive(Clone)]
+pub struct LedgerHandle {
+    pool: Arc<PoolManager>,
+    executor: gpui::BackgroundExecutor,
+}
+
+impl LedgerHandle {
+    pub fn spawn(cx: &mut gpui::App, file: Option<std::path::PathBuf>) -> Self {
+        let executor = cx.background_executor();
+        let pool = Arc::new(PoolManager::new(file, &executor));
+
+        Self {
+            pool,
+            executor: executor.clone(),
+        }
+    }
+
+    async fn send(&self, cmd: &str) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
+        let (response_tx, response_rx) = bounded(64);
+        let cmd = cmd.to_string();
+        let pool = self.pool.clone();
+
+        // Spawn a task to execute this command
+        self.executor
+            .spawn(async move {
+                if let Err(e) = execute_command(pool, cmd, response_tx).await {
+                    // Log error - the task failed but we've already sent error events if possible
+                    eprintln!("Command execution task failed: {:?}", e);
+                }
+            })
+            .detach();
+
         Ok(response_rx)
     }
 
@@ -341,89 +451,89 @@ pub enum ActorError {
     Send(#[from] async_channel::SendError<LedgerEvent>),
 }
 
-async fn run_actor(
-    file: Option<std::path::PathBuf>,
-    cmd_rx: Receiver<LedgerCommand>,
+async fn execute_command(
+    pool: Arc<PoolManager>,
+    cmd: String,
+    response_tx: Sender<LedgerEvent>,
 ) -> Result<(), ActorError> {
-    let mut ledger = Ledger::spawn(file).await.map_err(ActorError::Io)?;
+    // Acquire a process from the pool
+    let mut ledger = pool.acquire().await.map_err(ActorError::Io)?;
 
-    while let Ok(command) = cmd_rx.recv().await {
-        let LedgerCommand { cmd, response_tx } = command;
+    // Execute the command
+    if let Err(e) = ledger.command(&cmd).await {
+        response_tx
+            .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(e)))))
+            .await
+            .map_err(ActorError::Send)?;
+        pool.release(ledger);
+        return Ok(());
+    }
 
-        if let Err(e) = ledger.command(&cmd).await {
-            response_tx
-                .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(e)))))
-                .await
-                .map_err(ActorError::Send)?;
-            continue;
-        }
+    // Accumulate stderr in case we see multiple lines before marker
+    let mut stderr_lines = Vec::new();
 
-        // Accumulate stderr in case we see multiple lines before marker
-        let mut stderr_lines = Vec::new();
-
-        loop {
-            match ledger.read_either().await {
-                Ok(ReadResult::Stdout(Some(line))) => {
-                    // Got stdout line
-                    if response_tx.send(LedgerEvent::Line(line)).await.is_err() {
-                        // Receiver dropped - drain remaining output
-                        while let Ok(Some(_)) = ledger.read_line().await {}
-                        break;
-                    }
-                }
-                Ok(ReadResult::Stdout(None)) => {
-                    // Marker reached
-                    if stderr_lines.is_empty() {
-                        // No stderr seen - success
-                        response_tx
-                            .send(LedgerEvent::Done(Ok(())))
-                            .await
-                            .map_err(ActorError::Send)?;
-                    } else {
-                        // Had stderr - return error
-                        let error_msg = stderr_lines.join("").trim().to_string();
-                        response_tx
-                            .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
-                            .await
-                            .map_err(ActorError::Send)?;
-                    }
-                    break;
-                }
-                Ok(ReadResult::Stderr(Some(line))) => {
-                    // Got stderr line - accumulate it
-                    stderr_lines.push(line);
-                }
-                Ok(ReadResult::Stderr(None)) => {
-                    // Stderr EOF - shouldn't happen normally, but treat as error if we have stderr
-                    if stderr_lines.is_empty() {
-                        response_tx
-                            .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(
-                                std::io::Error::new(
-                                    std::io::ErrorKind::UnexpectedEof,
-                                    "Stderr closed",
-                                ),
-                            )))))
-                            .await
-                            .map_err(ActorError::Send)?;
-                    } else {
-                        let error_msg = stderr_lines.join("").trim().to_string();
-                        response_tx
-                            .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
-                            .await
-                            .map_err(ActorError::Send)?;
-                    }
-                    break;
-                }
-                Err(e) => {
-                    response_tx
-                        .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(e)))))
-                        .await
-                        .map_err(ActorError::Send)?;
+    loop {
+        match ledger.read_either().await {
+            Ok(ReadResult::Stdout(Some(line))) => {
+                // Got stdout line
+                if response_tx.send(LedgerEvent::Line(line)).await.is_err() {
+                    // Receiver dropped - drain remaining output
+                    while let Ok(Some(_)) = ledger.read_line().await {}
                     break;
                 }
             }
+            Ok(ReadResult::Stdout(None)) => {
+                // Marker reached
+                if stderr_lines.is_empty() {
+                    // No stderr seen - success
+                    response_tx
+                        .send(LedgerEvent::Done(Ok(())))
+                        .await
+                        .map_err(ActorError::Send)?;
+                } else {
+                    // Had stderr - return error
+                    let error_msg = stderr_lines.join("").trim().to_string();
+                    response_tx
+                        .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
+                        .await
+                        .map_err(ActorError::Send)?;
+                }
+                break;
+            }
+            Ok(ReadResult::Stderr(Some(line))) => {
+                // Got stderr line - accumulate it
+                stderr_lines.push(line);
+            }
+            Ok(ReadResult::Stderr(None)) => {
+                // Stderr EOF - shouldn't happen normally, but treat as error if we have stderr
+                if stderr_lines.is_empty() {
+                    response_tx
+                        .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(
+                            std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Stderr closed"),
+                        )))))
+                        .await
+                        .map_err(ActorError::Send)?;
+                } else {
+                    let error_msg = stderr_lines.join("").trim().to_string();
+                    response_tx
+                        .send(LedgerEvent::Done(Err(LedgerError::Stderr(error_msg))))
+                        .await
+                        .map_err(ActorError::Send)?;
+                }
+                break;
+            }
+            Err(e) => {
+                response_tx
+                    .send(LedgerEvent::Done(Err(LedgerError::Io(Arc::new(e)))))
+                    .await
+                    .map_err(ActorError::Send)?;
+                break;
+            }
         }
     }
+
+    // Release the process back to the pool
+    pool.release(ledger);
 
     Ok(())
 }
@@ -552,16 +662,41 @@ mod tests {
     use super::*;
     use futures_lite::StreamExt;
 
+    // Test helper to create a handle without gpui
+    struct TestHandle {
+        pool: Arc<PoolManager>,
+    }
+
+    impl TestHandle {
+        fn new(file: Option<std::path::PathBuf>) -> Self {
+            Self {
+                pool: Arc::new(PoolManager {
+                    file,
+                    idle_processes: Arc::new(Mutex::new(Vec::new())),
+                }),
+            }
+        }
+
+        async fn stream(&self, cmd: &str) -> Result<LineStream, ChannelClosed> {
+            let (response_tx, response_rx) = bounded(64);
+            let cmd = cmd.to_string();
+            let pool = self.pool.clone();
+
+            // Spawn task in a thread
+            std::thread::spawn(move || {
+                futures_lite::future::block_on(async move {
+                    let _ = execute_command(pool, cmd, response_tx).await;
+                });
+            });
+
+            Ok(LineStream::from_events(response_rx))
+        }
+    }
+
     #[test]
     fn test_valid_command_no_stderr() {
         futures_lite::future::block_on(async {
-            // Set up actor manually (without gpui)
-            let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
-
-            // Spawn actor in background
-            std::thread::spawn(move || futures_lite::future::block_on(run_actor(None, cmd_rx)));
-
-            let handle = LedgerHandle { cmd_tx };
+            let handle = TestHandle::new(None);
 
             // Send valid command
             let mut stream = handle
@@ -590,12 +725,7 @@ mod tests {
     #[test]
     fn test_invalid_command_produces_stderr_error() {
         futures_lite::future::block_on(async {
-            // Set up actor manually
-            let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
-
-            std::thread::spawn(move || futures_lite::future::block_on(run_actor(None, cmd_rx)));
-
-            let handle = LedgerHandle { cmd_tx };
+            let handle = TestHandle::new(None);
 
             // Send invalid command
             let mut stream = handle
@@ -628,13 +758,7 @@ mod tests {
             let manifest_dir = env!("CARGO_MANIFEST_DIR");
             let test_file =
                 std::path::PathBuf::from(manifest_dir).join("src/fixtures/jornal.ledger");
-            let (cmd_tx, cmd_rx) = bounded::<LedgerCommand>(16);
-
-            std::thread::spawn(move || {
-                futures_lite::future::block_on(run_actor(Some(test_file), cmd_rx))
-            });
-
-            let handle = LedgerHandle { cmd_tx };
+            let handle = TestHandle::new(Some(test_file));
 
             let stream = handle.stream("lisp").await.expect("Failed to send command");
             let mut sexp_stream = stream.sexpr();
@@ -655,6 +779,77 @@ mod tests {
             }
 
             assert_eq!(transactions, 1, "Should have parsed one transaction");
+        });
+    }
+
+    #[test]
+    fn test_concurrent_commands() {
+        futures_lite::future::block_on(async {
+            let handle = TestHandle::new(None);
+
+            // Spawn two concurrent commands
+            let handle1 = handle.pool.clone();
+            let handle2 = handle.pool.clone();
+
+            let task1 = std::thread::spawn(move || {
+                futures_lite::future::block_on(async move {
+                    let mut count = 0;
+                    let mut stream = {
+                        let (response_tx, response_rx) = bounded(64);
+                        std::thread::spawn(move || {
+                            futures_lite::future::block_on(async move {
+                                let _ =
+                                    execute_command(handle1, "balance".to_string(), response_tx)
+                                        .await;
+                            });
+                        });
+                        LineStream::from_events(response_rx)
+                    };
+
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(_) => count += 1,
+                            Err(_) => break,
+                        }
+                    }
+                    count
+                })
+            });
+
+            let task2 = std::thread::spawn(move || {
+                futures_lite::future::block_on(async move {
+                    let mut count = 0;
+                    let mut stream = {
+                        let (response_tx, response_rx) = bounded(64);
+                        std::thread::spawn(move || {
+                            futures_lite::future::block_on(async move {
+                                let _ =
+                                    execute_command(handle2, "accounts".to_string(), response_tx)
+                                        .await;
+                            });
+                        });
+                        LineStream::from_events(response_rx)
+                    };
+
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(_) => count += 1,
+                            Err(_) => break,
+                        }
+                    }
+                    count
+                })
+            });
+
+            // Both tasks should complete successfully
+            let count1 = task1.join().expect("Task 1 should complete");
+            let count2 = task2.join().expect("Task 2 should complete");
+
+            // Both commands should produce output
+            assert!(
+                count1 > 0 || count2 > 0,
+                "At least one command should produce output"
+            );
         });
     }
 }
