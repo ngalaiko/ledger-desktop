@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::path;
 
 use super::accounts::Account;
-use super::amounts::{Amount, ParseAmounError};
+use super::amounts::{Amount, ParseAmountError};
 use super::sexpr;
 
 #[derive(Debug, thiserror::Error)]
@@ -77,7 +77,7 @@ pub enum ParsePostingError {
     #[error("expected type {1} at position {0}")]
     UnexpectedType(usize, sexpr::Value),
     #[error("invalid amount: {0}")]
-    InvalidAmount(ParseAmounError),
+    InvalidAmount(ParseAmountError),
 }
 
 #[derive(Debug, Clone)]

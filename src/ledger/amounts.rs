@@ -3,7 +3,7 @@ use core::fmt;
 use fastnum::D128;
 
 #[derive(Debug, thiserror::Error)]
-pub enum ParseAmounError {
+pub enum ParseAmountError {
     #[error("invalid decimal: {0}")]
     InvalidDecimal(String),
     #[error("invalid amount format")]
@@ -23,18 +23,18 @@ impl fmt::Display for CurrencyAmount {
 }
 
 impl CurrencyAmount {
-    pub fn from_str(amount_str: &str) -> Result<Self, ParseAmounError> {
+    pub fn from_str(amount_str: &str) -> Result<Self, ParseAmountError> {
         let amount_str = amount_str.trim();
         let mut parts = amount_str.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
-            return Err(ParseAmounError::InvalidFormat);
+            return Err(ParseAmountError::InvalidFormat);
         }
         let value = parts.remove(0);
         let value = value.replace(",", ""); // Remove commas for thousands separators
 
         let value = value
             .parse::<D128>()
-            .map_err(|e| ParseAmounError::InvalidDecimal(e.to_string()))?;
+            .map_err(|e| ParseAmountError::InvalidDecimal(e.to_string()))?;
         if parts.is_empty() {
             return Ok(CurrencyAmount {
                 value,
@@ -67,23 +67,23 @@ impl fmt::Display for Amount {
 }
 
 impl Amount {
-    pub fn parse(amount_str: &str) -> Result<Self, ParseAmounError> {
+    pub fn parse(amount_str: &str) -> Result<Self, ParseAmountError> {
         let price_start = amount_str.find('{');
         let price = if let Some(price_start) = price_start {
-            let price_end = amount_str.find('}').ok_or(ParseAmounError::InvalidFormat)?;
+            let price_end = amount_str.find('}').ok_or(ParseAmountError::InvalidFormat)?;
             let price_str = &amount_str[price_start + 1..price_end].trim();
             let price =
-                CurrencyAmount::from_str(price_str).map_err(|_| ParseAmounError::InvalidFormat)?;
+                CurrencyAmount::from_str(price_str).map_err(|_| ParseAmountError::InvalidFormat)?;
             Ok(Some(price))
         } else {
             Ok(None)
         }?;
         let date_start = amount_str.find('[');
         let date = if let Some(date_start) = date_start {
-            let date_end = amount_str.find(']').ok_or(ParseAmounError::InvalidFormat)?;
+            let date_end = amount_str.find(']').ok_or(ParseAmountError::InvalidFormat)?;
             let date_str = &amount_str[date_start + 1..date_end].trim();
             let date = chrono::NaiveDate::parse_from_str(date_str, "%Y/%m/%d")
-                .map_err(|_| ParseAmounError::InvalidFormat)?;
+                .map_err(|_| ParseAmountError::InvalidFormat)?;
             Ok(Some(date))
         } else {
             Ok(None)

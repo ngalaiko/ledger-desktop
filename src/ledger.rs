@@ -80,6 +80,12 @@ impl LedgerHandle {
         let line_stream = LineStream::from_events(event_rx);
         Ok(line_stream.sexpr().transactions())
     }
+
+    pub async fn prices(&self) -> Result<PricesStream<LineStream>, ChannelClosed> {
+        let event_rx = self.send("prices").await?;
+        let line_stream = LineStream::from_events(event_rx);
+        Ok(PricesStream::new(line_stream))
+    }
 }
 
 pin_project_lite::pin_project! {
@@ -233,6 +239,46 @@ where
                 }
                 Poll::Pending => return Poll::Pending,
             }
+        }
+    }
+}
+
+pin_project_lite::pin_project! {
+    pub struct PricesStream<S> {
+        #[pin]
+        inner: S,
+    }
+}
+
+impl<S> PricesStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    pub fn new(inner: S) -> Self {
+        Self { inner }
+    }
+}
+
+impl<S> Stream for PricesStream<S>
+where
+    S: Stream<Item = Result<String, LedgerError>>,
+{
+    type Item = Result<prices::Price, LedgerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        match this.inner.poll_next(cx) {
+            Poll::Ready(Some(Ok(line))) => match prices::Price::from_str(&line) {
+                Ok(price) => Poll::Ready(Some(Ok(price))),
+                Err(e) => Poll::Ready(Some(Err(LedgerError::Stderr(format!(
+                    "Failed to parse transaction: {}",
+                    e
+                ))))),
+            },
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }

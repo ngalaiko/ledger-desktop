@@ -5,7 +5,7 @@ pub enum ParsePriceError {
     #[error(transparent)]
     ParseDateError(chrono::ParseError),
     #[error(transparent)]
-    ParseAmountError(super::amounts::ParseAmounError),
+    ParseAmountError(super::amounts::ParseAmountError),
     #[error("invalid price format")]
     InvalidFormat,
 }
