@@ -143,54 +143,6 @@ impl PoolManager {
     }
 }
 
-#[derive(Clone)]
-pub struct LedgerHandle {
-    pool: Arc<PoolManager>,
-    executor: gpui::BackgroundExecutor,
-}
-
-impl LedgerHandle {
-    pub fn spawn(cx: &mut gpui::App, file: Option<std::path::PathBuf>) -> Self {
-        let executor = cx.background_executor();
-        let pool = Arc::new(PoolManager::new(file, &executor));
-
-        Self {
-            pool,
-            executor: executor.clone(),
-        }
-    }
-
-    async fn send(&self, cmd: &str) -> Result<Receiver<LedgerEvent>, ChannelClosed> {
-        let (response_tx, response_rx) = bounded(64);
-        let cmd = cmd.to_string();
-        let pool = self.pool.clone();
-
-        // Spawn a task to execute this command
-        self.executor
-            .spawn(async move {
-                if let Err(e) = execute_command(pool, cmd, response_tx).await {
-                    // Log error - the task failed but we've already sent error events if possible
-                    eprintln!("Command execution task failed: {:?}", e);
-                }
-            })
-            .detach();
-
-        Ok(response_rx)
-    }
-
-    pub async fn transactions(&self) -> Result<TransactionStream, ChannelClosed> {
-        let event_rx = self.send("lisp --lisp-date-format %Y-%m-%d").await?;
-        let line_stream = LineStream::from_events(event_rx);
-        Ok(line_stream.sexpr().transactions())
-    }
-
-    pub async fn prices(&self) -> Result<PricesStream, ChannelClosed> {
-        let event_rx = self.send("prices").await?;
-        let line_stream = LineStream::from_events(event_rx);
-        Ok(PricesStream::new(line_stream))
-    }
-}
-
 pin_project_lite::pin_project! {
     pub struct LineStream {
         rx: Receiver<LedgerEvent>,

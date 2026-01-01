@@ -42,10 +42,12 @@ impl State {
 
         cx.notify();
 
+        // Load transactions concurrently
+        let ledger_for_transactions = ledger.clone();
         cx.spawn(async move |this, cx| {
-            let Ok(mut stream) = ledger.transactions().await else {
+            let Ok(mut stream) = ledger_for_transactions.transactions().await else {
                 this.update(cx, |this, cx| {
-                    this.error = Some("Failed to start ledger process".into());
+                    this.error = Some("Failed to start ledger process for transactions".into());
                     cx.notify();
                 })
                 .map_err(|e| {
@@ -89,6 +91,63 @@ impl State {
                         eprintln!("Error parsing transaction: {}", e);
                         this.update(cx, |this, cx| {
                             this.error = Some(format!("Error parsing transaction: {}", e));
+                            cx.notify();
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error updating state with error: {}", e);
+                        })
+                        .ok();
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+
+        // Load prices concurrently
+        cx.spawn(async move |this, cx| {
+            let Ok(mut stream) = ledger.prices().await else {
+                this.update(cx, |this, cx| {
+                    this.error = Some("Failed to start ledger process for prices".into());
+                    cx.notify();
+                })
+                .map_err(|e| {
+                    eprintln!("Error updating state with error: {}", e);
+                })
+                .ok();
+                return;
+            };
+
+            loop {
+                match stream.next().await {
+                    Some(Ok(price)) => {
+                        this.update(cx, |_this, _cx| {
+                            println!(
+                                "Loaded price: {} {} on {}",
+                                price.commodity,
+                                price.value.to_string(),
+                                price.date
+                            );
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error updating prices: {}", e);
+                        })
+                        .ok();
+                    }
+                    None => {
+                        this.update(cx, |_this, cx| {
+                            cx.notify();
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error finalizing prices: {}", e);
+                        })
+                        .ok();
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        eprintln!("Error parsing price: {}", e);
+                        this.update(cx, |this, cx| {
+                            this.error = Some(format!("Error parsing price: {}", e));
                             cx.notify();
                         })
                         .map_err(|e| {
