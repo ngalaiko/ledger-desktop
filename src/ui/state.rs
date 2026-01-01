@@ -5,11 +5,9 @@ use futures_lite::StreamExt;
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::{
-    accounts::{Account, Balance, TreeNode},
-    ledger::LedgerHandle,
-    transactions::{CurrencyAmount, Transaction},
-};
+use crate::ledger::accounts::{Account, Balance, TreeNode};
+use crate::ledger::transactions::{CurrencyAmount, Transaction};
+use crate::ledger::LedgerHandle;
 
 pub struct State {
     pub accounts: TreeNode,

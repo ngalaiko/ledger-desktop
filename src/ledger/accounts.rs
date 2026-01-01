@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use fastnum::D128;
 
-use crate::transactions::CurrencyAmount;
+use super::transactions::CurrencyAmount;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Account {

@@ -7,7 +7,8 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
-use crate::{accounts::Account, transactions::Transaction};
+use crate::ledger::accounts::Account;
+use crate::ledger::transactions::Transaction;
 
 use super::state::State;
 

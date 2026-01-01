@@ -9,7 +9,7 @@ use gpui_component::{
     IconName,
 };
 
-use crate::accounts::{Account, TreeNode};
+use crate::ledger::accounts::{Account, TreeNode};
 
 use super::{
     components::checkbox::{Checkbox, CheckboxState},

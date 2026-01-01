@@ -25,7 +25,7 @@ use gpui_component::{
 };
 use gpui_component::{ActiveTheme, PixelsExt};
 
-use crate::accounts::{Account, Balance};
+use crate::ledger::accounts::{Account, Balance};
 
 use super::state::State;
 
