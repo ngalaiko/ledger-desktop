@@ -178,20 +178,13 @@ impl LedgerHandle {
         Ok(response_rx)
     }
 
-    #[cfg(test)]
-    pub async fn stream(&self, cmd: &str) -> Result<LineStream, ChannelClosed> {
-        let event_rx = self.send(cmd).await?;
-        let line_stream = LineStream::from_events(event_rx);
-        Ok(line_stream)
-    }
-
-    pub async fn transactions(&self) -> Result<TransactionStream<LineStream>, ChannelClosed> {
+    pub async fn transactions(&self) -> Result<TransactionStream, ChannelClosed> {
         let event_rx = self.send("lisp --lisp-date-format %Y-%m-%d").await?;
         let line_stream = LineStream::from_events(event_rx);
         Ok(line_stream.sexpr().transactions())
     }
 
-    pub async fn prices(&self) -> Result<PricesStream<LineStream>, ChannelClosed> {
+    pub async fn prices(&self) -> Result<PricesStream, ChannelClosed> {
         let event_rx = self.send("prices").await?;
         let line_stream = LineStream::from_events(event_rx);
         Ok(PricesStream::new(line_stream))
@@ -211,7 +204,7 @@ impl LineStream {
         Self { rx, pending: None }
     }
 
-    pub fn sexpr(self) -> SexpStream<Self> {
+    pub fn sexpr(self) -> SexpStream {
         SexpStream::new(self)
     }
 }
@@ -255,20 +248,17 @@ impl Stream for LineStream {
 }
 
 pin_project_lite::pin_project! {
-    pub struct SexpStream<S> {
+    pub struct SexpStream {
         #[pin]
-        inner: S,
+        inner: LineStream,
         parser: sexpr::Parser,
         pending: Vec<sexpr::Value>,
         finished: bool,
     }
 }
 
-impl<S> SexpStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
-    pub fn new(inner: S) -> Self {
+impl SexpStream {
+    pub fn new(inner: LineStream) -> Self {
         Self {
             inner,
             parser: sexpr::Parser::new(),
@@ -277,15 +267,12 @@ where
         }
     }
 
-    pub fn transactions(self) -> TransactionStream<S> {
+    pub fn transactions(self) -> TransactionStream {
         TransactionStream::new(self)
     }
 }
 
-impl<S> Stream for SexpStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
+impl Stream for SexpStream {
     type Item = Result<sexpr::Value, LedgerError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -354,25 +341,19 @@ where
 }
 
 pin_project_lite::pin_project! {
-    pub struct PricesStream<S> {
+    pub struct PricesStream {
         #[pin]
-        inner: S,
+        inner: LineStream,
     }
 }
 
-impl<S> PricesStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
-    pub fn new(inner: S) -> Self {
+impl PricesStream {
+    pub fn new(inner: LineStream) -> Self {
         Self { inner }
     }
 }
 
-impl<S> Stream for PricesStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
+impl Stream for PricesStream {
     type Item = Result<prices::Price, LedgerError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -394,25 +375,19 @@ where
 }
 
 pin_project_lite::pin_project! {
-    pub struct TransactionStream<S> {
+    pub struct TransactionStream {
         #[pin]
-        inner: SexpStream<S>,
+        inner: SexpStream,
     }
 }
 
-impl<S> TransactionStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
-    pub fn new(inner: SexpStream<S>) -> Self {
+impl TransactionStream {
+    pub fn new(inner: SexpStream) -> Self {
         Self { inner }
     }
 }
 
-impl<S> Stream for TransactionStream<S>
-where
-    S: Stream<Item = Result<String, LedgerError>>,
-{
+impl Stream for TransactionStream {
     type Item = Result<transactions::Transaction, LedgerError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
