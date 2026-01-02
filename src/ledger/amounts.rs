@@ -49,17 +49,17 @@ impl CurrencyAmount {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Amount {
     pub value: CurrencyAmount,
-    pub price: Option<CurrencyAmount>,
-    pub date: Option<chrono::NaiveDate>,
+    pub cost: Option<CurrencyAmount>,
+    pub cost_date: Option<chrono::NaiveDate>,
 }
 
 impl fmt::Display for Amount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.value)?;
-        if let Some(price) = &self.price {
+        if let Some(price) = &self.cost {
             write!(f, " {{{}}}", price)?;
         }
-        if let Some(date) = &self.date {
+        if let Some(date) = &self.cost_date {
             write!(f, " [{}]", date.format("%Y/%m/%d"))?;
         }
         Ok(())
@@ -70,7 +70,9 @@ impl Amount {
     pub fn parse(amount_str: &str) -> Result<Self, ParseAmountError> {
         let price_start = amount_str.find('{');
         let price = if let Some(price_start) = price_start {
-            let price_end = amount_str.find('}').ok_or(ParseAmountError::InvalidFormat)?;
+            let price_end = amount_str
+                .find('}')
+                .ok_or(ParseAmountError::InvalidFormat)?;
             let price_str = &amount_str[price_start + 1..price_end].trim();
             let price =
                 CurrencyAmount::from_str(price_str).map_err(|_| ParseAmountError::InvalidFormat)?;
@@ -80,7 +82,9 @@ impl Amount {
         }?;
         let date_start = amount_str.find('[');
         let date = if let Some(date_start) = date_start {
-            let date_end = amount_str.find(']').ok_or(ParseAmountError::InvalidFormat)?;
+            let date_end = amount_str
+                .find(']')
+                .ok_or(ParseAmountError::InvalidFormat)?;
             let date_str = &amount_str[date_start + 1..date_end].trim();
             let date = chrono::NaiveDate::parse_from_str(date_str, "%Y/%m/%d")
                 .map_err(|_| ParseAmountError::InvalidFormat)?;
@@ -96,7 +100,11 @@ impl Amount {
             amount_str
         };
         let value = CurrencyAmount::from_str(amount_str)?;
-        Ok(Amount { value, price, date })
+        Ok(Amount {
+            value,
+            cost: price,
+            cost_date: date,
+        })
     }
 }
 
@@ -110,8 +118,8 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(amount.value.value, "-1020.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "");
-        assert!(amount.price.is_none());
-        assert!(amount.date.is_none());
+        assert!(amount.cost.is_none());
+        assert!(amount.cost_date.is_none());
     }
 
     #[test]
@@ -120,8 +128,8 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(amount.value.value, "-1020.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
-        assert!(amount.price.is_none());
-        assert!(amount.date.is_none());
+        assert!(amount.cost.is_none());
+        assert!(amount.cost_date.is_none());
     }
 
     #[test]
@@ -130,8 +138,8 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(amount.value.value, "-20.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
-        assert!(amount.price.is_none());
-        assert!(amount.date.is_none());
+        assert!(amount.cost.is_none());
+        assert!(amount.cost_date.is_none());
     }
 
     #[test]
@@ -140,12 +148,12 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(amount.value.value, "-20.48".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "GEL");
-        assert!(amount.price.is_some());
-        let price = amount.price.as_ref().unwrap();
+        assert!(amount.cost.is_some());
+        let price = amount.cost.as_ref().unwrap();
         assert_eq!(price.value, "3.6041025641".parse::<D128>().unwrap());
         assert_eq!(price.commodity, "SEK");
-        assert!(amount.date.is_some());
-        let date = amount.date.as_ref().unwrap();
+        assert!(amount.cost_date.is_some());
+        let date = amount.cost_date.as_ref().unwrap();
         assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2025, 12, 3).unwrap());
     }
 
@@ -155,16 +163,16 @@ mod tests {
         let amount = Amount::parse(amount_str).expect("should parse amount");
         assert_eq!(amount.value.value, "194.21240000".parse::<D128>().unwrap());
         assert_eq!(amount.value.commodity, "USDT");
-        assert!(amount.price.is_some());
-        let price = amount.price.as_ref().unwrap();
+        assert!(amount.cost.is_some());
+        let price = amount.cost.as_ref().unwrap();
         // D128 supports up to ~38 decimal digits, so the full 30-digit precision is preserved
         assert_eq!(
             price.value,
             "9.525653356840242950501615756769".parse::<D128>().unwrap()
         );
         assert_eq!(price.commodity, "SEK");
-        assert!(amount.date.is_some());
-        let date = amount.date.as_ref().unwrap();
+        assert!(amount.cost_date.is_some());
+        let date = amount.cost_date.as_ref().unwrap();
         assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2025, 9, 17).unwrap());
     }
 }
