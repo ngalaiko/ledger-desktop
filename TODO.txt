@@ -5,3 +5,5 @@
 - balance chart
 	- add legend for commodities to balance chart ?
 	- configurable account chart table resolution ?
+- handle ledger format errors
+- write / update
