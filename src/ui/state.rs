@@ -1,3 +1,4 @@
+use fastnum::D128;
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 
@@ -7,6 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::ledger::accounts::{Account, Balance, TreeNode};
 use crate::ledger::amounts::CurrencyAmount;
+use crate::ledger::prices::Price;
 use crate::ledger::transactions::Transaction;
 use crate::ledger::LedgerHandle;
 
@@ -14,6 +16,7 @@ pub struct State {
     pub accounts: TreeNode,
     pub transactions: Vec<Transaction>,
     pub running_balance: RunningBalance,
+    pub currency_converter: CurrencyConverter,
     pub error: Option<String>,
 
     ledger_handle: LedgerHandle,
@@ -25,6 +28,7 @@ impl State {
         let mut ledger_state = Self {
             accounts: TreeNode::new(),
             running_balance: RunningBalance::new(),
+            currency_converter: CurrencyConverter::new(),
             transactions: Vec::new(),
             error: None,
             ledger_handle,
@@ -63,11 +67,18 @@ impl State {
                         this.update(cx, |this, _cx| {
                             for posting in transaction.postings.iter() {
                                 this.accounts.add_account(&posting.account);
-                                this.running_balance.record(
-                                    transaction.time,
+                                this.running_balance.record_diff(
+                                    transaction.date,
                                     &posting.account,
                                     &posting.amount.value,
                                 );
+                                if let Some(cost) = &posting.amount.cost {
+                                    this.currency_converter.record(Price {
+                                        date: transaction.date,
+                                        commodity: posting.amount.value.commodity.clone(),
+                                        value: cost.clone(),
+                                    });
+                                }
                             }
 
                             this.transactions.push(transaction.clone());
@@ -121,13 +132,8 @@ impl State {
             loop {
                 match stream.next().await {
                     Some(Ok(price)) => {
-                        this.update(cx, |_this, _cx| {
-                            println!(
-                                "Loaded price: {} {} on {}",
-                                price.commodity,
-                                price.value.to_string(),
-                                price.date
-                            );
+                        this.update(cx, |this, _cx| {
+                            this.currency_converter.record(price);
                         })
                         .map_err(|e| {
                             eprintln!("Error updating prices: {}", e);
@@ -180,17 +186,7 @@ impl RunningBalance {
         self.balances.iter()
     }
 
-    pub fn record(&mut self, date: chrono::NaiveDate, account: &Account, amount: &CurrencyAmount) {
-        // Record for the account itself
-        self.record_single(date, account, amount);
-
-        // Also record for all parent accounts
-        for ancestor in account.ancestors() {
-            self.record_single(date, &ancestor, amount);
-        }
-    }
-
-    fn record_single(
+    pub fn record_diff(
         &mut self,
         date: chrono::NaiveDate,
         account: &Account,
@@ -222,5 +218,62 @@ impl RunningBalance {
             }
         }
         Balance::new()
+    }
+}
+
+pub struct CurrencyConverter {
+    // From commodity -> to commodity -> date -> price
+    history: HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>>,
+}
+
+impl CurrencyConverter {
+    pub fn new() -> Self {
+        Self {
+            history: HashMap::new(),
+        }
+    }
+
+    pub fn record(&mut self, price: Price) {
+        {
+            let to_map = self
+                .history
+                .entry(price.commodity.clone())
+                .or_insert_with(HashMap::new);
+            let date_map = to_map
+                .entry(price.value.commodity.clone())
+                .or_insert_with(BTreeMap::new);
+            date_map.insert(price.date, price.value.value);
+        }
+
+        {
+            let from_map = self
+                .history
+                .entry(price.value.commodity)
+                .or_insert_with(HashMap::new);
+            let date_map = from_map
+                .entry(price.commodity)
+                .or_insert_with(BTreeMap::new);
+            date_map.insert(price.date, D128::ONE / price.value.value);
+        }
+    }
+
+    pub fn convert(
+        &self,
+        amount: &CurrencyAmount,
+        target_commodity: &str,
+        at_date: chrono::NaiveDate,
+    ) -> Option<CurrencyAmount> {
+        if amount.commodity == target_commodity {
+            return Some(amount.clone());
+        }
+
+        let to_map = self.history.get(&amount.commodity)?;
+        let date_map = to_map.get(target_commodity)?;
+        let (_, price) = date_map.range(..=at_date).next_back()?;
+
+        Some(CurrencyAmount {
+            value: amount.value * (*price),
+            commodity: target_commodity.to_string(),
+        })
     }
 }

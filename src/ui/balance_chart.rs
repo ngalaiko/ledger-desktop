@@ -27,7 +27,7 @@ use gpui_component::{ActiveTheme, PixelsExt};
 
 use crate::ledger::accounts::{Account, Balance};
 
-use super::state::State;
+use super::state::{CurrencyConverter, State};
 
 // Constants for chart layout
 /// Padding around the plot area in pixels
@@ -87,18 +87,18 @@ impl BalanceChart {
         let state = self.state.read(cx);
 
         // Collect all dates where any visible account has transactions
-        let mut all_dates = std::collections::BTreeSet::new();
-        for (account, date_balances) in state.running_balance.iter() {
-            if self
-                .visible_accounts
-                .iter()
-                .any(|visible_account| visible_account.is_parent_of(account))
-            {
-                for date in date_balances.keys() {
-                    all_dates.insert(*date);
-                }
-            }
-        }
+        let all_dates = state
+            .running_balance
+            .iter()
+            .filter(|(account, _)| {
+                // Check if account is in visible accounts or a child of any visible account
+                self.visible_accounts
+                    .iter()
+                    .any(|visible_account| visible_account.is_parent_of(account))
+            })
+            .flat_map(|(_, date_balances)| date_balances.keys())
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
 
         if all_dates.is_empty() {
             self.hovered_idx = None;
@@ -118,6 +118,7 @@ impl BalanceChart {
         let mut plot_dates = Vec::new();
         let mut plot_balances = Vec::new();
 
+        let converter = &state.currency_converter;
         let mut current_date = filtered_start;
         while current_date <= max_date {
             // Aggregate balances from all visible accounts at this date
@@ -127,7 +128,8 @@ impl BalanceChart {
                 let balance = state
                     .running_balance
                     .get_balance(visible_account, current_date);
-                daily_balance.add(&balance);
+                let converted_balance = convert_balance(converter, &balance, "SEK", current_date);
+                daily_balance.add(&converted_balance);
             }
 
             plot_dates.push(current_date);
@@ -138,6 +140,23 @@ impl BalanceChart {
 
         self.plot_inner.set_data(plot_dates, plot_balances);
     }
+}
+
+fn convert_balance(
+    converter: &CurrencyConverter,
+    balance: &Balance,
+    target_commodity: &str,
+    at_date: chrono::NaiveDate,
+) -> Balance {
+    let mut converted_balance = Balance::new();
+    for amount in balance.iter() {
+        if let Some(converted_amount) = converter.convert(amount, target_commodity, at_date) {
+            converted_balance.add_amount(converted_amount);
+        } else {
+            converted_balance.add_amount(amount.clone());
+        }
+    }
+    converted_balance
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]

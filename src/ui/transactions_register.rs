@@ -7,10 +7,10 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
-use crate::ledger::accounts::Account;
-use crate::ledger::transactions::Transaction;
+use crate::ledger::{accounts::Account, transactions::Posting};
+use crate::ledger::{amounts::Amount, transactions::Transaction};
 
-use super::state::State;
+use super::state::{CurrencyConverter, State};
 
 pub struct RegisterView {
     state: Entity<State>,
@@ -26,38 +26,70 @@ impl RegisterView {
     }
 
     pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
-        let visible_transactions = self
-            .state
-            .read(cx)
-            .transactions
+        let converter = &self.state.read(cx).currency_converter;
+        let transactions = &self.state.read(cx).transactions;
+        let visible_transactions = transactions
             .iter()
-            .filter_map(|transaction| {
-                let matching_postings = transaction
-                    .postings
-                    .iter()
-                    .filter(|posting| {
-                        visible_accounts
-                            .iter()
-                            .any(|filter| filter.is_parent_of(&posting.account))
-                    })
-                    .collect::<Vec<_>>();
-
-                if matching_postings.is_empty() {
-                    // No matching postings, skip this transaction
-                    None
-                } else {
-                    Some(Transaction {
-                        postings: matching_postings.into_iter().cloned().collect(),
-                        ..transaction.clone()
-                    })
-                }
-            })
+            .filter_map(|transaction| filter_map_visible_transaction(transaction, visible_accounts))
+            .map(|tx| convert_transaction(converter, &tx))
             .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
             delegate.transactions = visible_transactions;
             table_state.refresh(cx);
         });
+    }
+}
+
+fn filter_map_visible_transaction(
+    transaction: &Transaction,
+    visible_accounts: &HashSet<Account>,
+) -> Option<Transaction> {
+    let matching_postings = transaction
+        .postings
+        .iter()
+        .filter(|posting| {
+            visible_accounts
+                .iter()
+                .any(|filter| filter.is_parent_of(&posting.account))
+        })
+        .collect::<Vec<_>>();
+
+    if matching_postings.is_empty() {
+        // No matching postings, skip this transaction
+        None
+    } else {
+        Some(Transaction {
+            postings: matching_postings.into_iter().cloned().collect(),
+            ..transaction.clone()
+        })
+    }
+}
+
+fn convert_transaction(converter: &CurrencyConverter, transaction: &Transaction) -> Transaction {
+    Transaction {
+        postings: transaction
+            .postings
+            .iter()
+            .map(|p| {
+                if let Some(converted_amount) =
+                    converter.convert(&p.amount.value, "SEK", transaction.date)
+                {
+                    Posting {
+                        amount: Amount {
+                            value: converted_amount,
+                            cost: None,
+                            cost_date: None,
+                        },
+                        account: p.account.clone(),
+                        ..p.clone()
+                    }
+                } else {
+                    p.clone()
+                }
+            })
+            .collect(),
+        ..transaction.clone()
     }
 }
 
@@ -151,7 +183,7 @@ impl TableDelegate for TransactionTableDelegate {
                 0 => {
                     // Date
                     if is_first {
-                        div().child(transaction.time.format("%Y-%m-%d").to_string())
+                        div().child(transaction.date.format("%Y-%m-%d").to_string())
                     } else {
                         div() // Empty for subsequent postings
                     }

@@ -53,16 +53,6 @@ impl Account {
         self.segments.last().unwrap()
     }
 
-    pub fn ancestors(&self) -> Vec<Account> {
-        let mut ancestors = Vec::new();
-        for i in 1..self.segments.len() {
-            ancestors.push(Account {
-                segments: self.segments[..i].to_vec(),
-            });
-        }
-        ancestors
-    }
-
     #[cfg(test)]
     pub fn parent(&self) -> Option<Account> {
         if self.segments.len() > 1 {

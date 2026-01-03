@@ -23,7 +23,7 @@ pub struct Transaction {
     pub file: path::PathBuf,
     #[allow(dead_code)]
     pub line: i64,
-    pub time: chrono::NaiveDate,
+    pub date: chrono::NaiveDate,
     pub description: String,
     pub postings: Vec<Posting>,
 }
@@ -62,7 +62,7 @@ impl Transaction {
         Ok(Transaction {
             file: path::PathBuf::from(file),
             line,
-            time: chrono::NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d")
+            date: chrono::NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d")
                 .map_err(ParseTransactionError::ParseDateError)?,
             description,
             postings,
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(transaction.line, 8561);
         assert_eq!(transaction.description, "Kop");
         assert_eq!(
-            transaction.time,
+            transaction.date,
             chrono::NaiveDate::from_ymd_opt(2025, 12, 13).unwrap()
         );
         assert_eq!(transaction.postings.len(), 1);
