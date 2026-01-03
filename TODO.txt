@@ -1,6 +1,5 @@
 - store all the state in a file: selected accounts, date range, filters, etc.
 - listen for source file changes and reload transactions
-- handle currency conversion
 - show account balance ?
 - balance chart
 	- add legend for commodities to balance chart ?
