@@ -6,6 +6,7 @@ mod accounts_tree;
 mod balance_chart;
 mod components;
 mod file;
+mod period_selector;
 mod state;
 mod transactions_register;
 
