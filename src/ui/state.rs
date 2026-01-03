@@ -17,6 +17,7 @@ pub struct State {
     pub transactions: Vec<Transaction>,
     pub running_balance: RunningBalance,
     pub currency_converter: CurrencyConverter,
+    pub selected_commodity: Option<String>,
     pub error: Option<String>,
 
     ledger_handle: LedgerHandle,
@@ -29,6 +30,7 @@ impl State {
             accounts: TreeNode::new(),
             running_balance: RunningBalance::new(),
             currency_converter: CurrencyConverter::new(),
+            selected_commodity: None,
             transactions: Vec::new(),
             error: None,
             ledger_handle,
@@ -167,6 +169,11 @@ impl State {
         })
         .detach();
     }
+
+    pub fn set_selected_commodity(&mut self, commodity: Option<String>, cx: &mut Context<Self>) {
+        self.selected_commodity = commodity;
+        cx.notify();
+    }
 }
 
 pub struct RunningBalance {
@@ -275,5 +282,11 @@ impl CurrencyConverter {
             value: amount.value * (*price),
             commodity: target_commodity.to_string(),
         })
+    }
+
+    pub fn available_commodities(&self) -> Vec<String> {
+        let mut commodities: Vec<String> = self.history.keys().cloned().collect();
+        commodities.sort();
+        commodities
     }
 }

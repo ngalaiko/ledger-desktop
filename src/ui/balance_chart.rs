@@ -127,7 +127,12 @@ impl BalanceChart {
                 let balance = state
                     .running_balance
                     .get_balance(visible_account, current_date);
-                let converted_balance = convert_balance(converter, &balance, "SEK", current_date);
+                let converted_balance = convert_balance(
+                    converter,
+                    &balance,
+                    state.selected_commodity.as_deref(),
+                    current_date,
+                );
                 daily_balance.add(&converted_balance);
             }
 
@@ -144,9 +149,14 @@ impl BalanceChart {
 fn convert_balance(
     converter: &CurrencyConverter,
     balance: &Balance,
-    target_commodity: &str,
+    target_commodity: Option<&str>,
     at_date: chrono::NaiveDate,
 ) -> Balance {
+    let Some(target_commodity) = target_commodity else {
+        // No conversion, return balance as-is
+        return balance.clone();
+    };
+
     let mut converted_balance = Balance::new();
     for amount in balance.iter() {
         if let Some(converted_amount) = converter.convert(amount, target_commodity, at_date) {

@@ -26,12 +26,14 @@ impl RegisterView {
     }
 
     pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
-        let converter = &self.state.read(cx).currency_converter;
-        let transactions = &self.state.read(cx).transactions;
+        let state = self.state.read(cx);
+        let converter = &state.currency_converter;
+        let transactions = &state.transactions;
+        let selected_commodity = state.selected_commodity.as_deref();
         let visible_transactions = transactions
             .iter()
             .filter_map(|transaction| filter_map_visible_transaction(transaction, visible_accounts))
-            .map(|tx| convert_transaction(converter, &tx))
+            .map(|tx| convert_transaction(converter, &tx, selected_commodity))
             .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
@@ -66,14 +68,23 @@ fn filter_map_visible_transaction(
     }
 }
 
-fn convert_transaction(converter: &CurrencyConverter, transaction: &Transaction) -> Transaction {
+fn convert_transaction(
+    converter: &CurrencyConverter,
+    transaction: &Transaction,
+    target_commodity: Option<&str>,
+) -> Transaction {
+    let Some(target_commodity) = target_commodity else {
+        // No conversion, return transaction as-is
+        return transaction.clone();
+    };
+
     Transaction {
         postings: transaction
             .postings
             .iter()
             .map(|p| {
                 if let Some(converted_amount) =
-                    converter.convert(&p.amount.value, "SEK", transaction.date)
+                    converter.convert(&p.amount.value, target_commodity, transaction.date)
                 {
                     Posting {
                         amount: Amount {
