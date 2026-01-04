@@ -4,21 +4,19 @@ use gpui_component::{v_flex, TitleBar};
 
 mod accounts_tree;
 mod balance_chart;
-mod commodity_selector;
 mod components;
-mod file;
-mod period_selector;
-mod state;
+mod ledger_file;
+mod ledger_state;
 mod transactions_register;
 
 pub struct Window {
-    file: Entity<file::LedgerFile>,
+    file: Entity<ledger_file::LedgerFile>,
 }
 
 impl Window {
     pub fn new(window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> Self {
         Self {
-            file: cx.new(|cx| file::LedgerFile::new(window, cx)),
+            file: cx.new(|cx| ledger_file::LedgerFile::new(window, cx)),
         }
     }
 }

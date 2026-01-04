@@ -11,19 +11,17 @@ use gpui_component::{
 
 use crate::ledger::accounts::{Account, TreeNode};
 
-use super::{
-    components::checkbox::{Checkbox, CheckboxState},
-    state::State,
-};
+use super::components::checkbox::{Checkbox, CheckboxState};
+use super::ledger_state::LedgerState;
 
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
-    state: Entity<State>,
+    state: Entity<LedgerState>,
     selected_accounts: HashSet<Account>,
 }
 
 impl AccountsTreeView {
-    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
         // Rebuild tree items with accounts when the state changes

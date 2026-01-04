@@ -5,24 +5,22 @@ use gpui_component::{
     v_flex,
 };
 
-use super::{
-    accounts_tree::AccountsTreeView,
-    balance_chart::BalanceChart,
-    commodity_selector::{commodity_selector, SelectCommodity},
-    state::State,
-    transactions_register::RegisterView,
-};
+use super::accounts_tree::AccountsTreeView;
+use super::balance_chart::BalanceChart;
+use super::components::commodity_selector::{commodity_selector, SelectCommodity};
+use super::ledger_state::LedgerState;
+use super::transactions_register::RegisterView;
 
 pub struct LedgerFile {
     chart_state: Entity<BalanceChart>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
-    state: Entity<State>,
+    state: Entity<LedgerState>,
 }
 
 impl LedgerFile {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| State::new(cx));
+        let state = cx.new(|cx| LedgerState::new(cx));
         let accounts_tree = cx.new(|cx| AccountsTreeView::new(state.clone(), cx));
         let register_view = cx.new(|cx| RegisterView::new(state.clone(), window, cx));
         let chart_state = cx.new(|cx| BalanceChart::new(state.clone(), cx));

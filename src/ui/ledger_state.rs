@@ -12,7 +12,7 @@ use crate::ledger::prices::Price;
 use crate::ledger::transactions::Transaction;
 use crate::ledger::LedgerHandle;
 
-pub struct State {
+pub struct LedgerState {
     pub accounts: TreeNode,
     pub transactions: Vec<Transaction>,
     pub running_balance: RunningBalance,
@@ -23,7 +23,7 @@ pub struct State {
     ledger_handle: LedgerHandle,
 }
 
-impl State {
+impl LedgerState {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let ledger_handle = LedgerHandle::spawn(cx, None);
         let mut ledger_state = Self {

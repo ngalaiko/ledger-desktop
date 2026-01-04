@@ -23,10 +23,8 @@ use gpui_component::{ActiveTheme, PixelsExt};
 
 use crate::ledger::accounts::{Account, Balance};
 
-use super::{
-    period_selector::{period_selector, Period, SelectPeriod},
-    state::{CurrencyConverter, State},
-};
+use super::components::period_selector::{period_selector, Period, SelectPeriod};
+use super::ledger_state::{CurrencyConverter, LedgerState};
 
 // Constants for chart layout
 /// Padding around the plot area in pixels
@@ -39,7 +37,7 @@ const MIN_TICK_SPACING: usize = 10;
 const Y_AXIS_LABEL_COUNT: usize = 5;
 
 pub struct BalanceChart {
-    state: Entity<State>,
+    state: Entity<LedgerState>,
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
@@ -49,7 +47,7 @@ pub struct BalanceChart {
 }
 
 impl BalanceChart {
-    pub fn new(state: Entity<State>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
         let colors = vec![
             cx.theme().colors.red,
             cx.theme().colors.green,

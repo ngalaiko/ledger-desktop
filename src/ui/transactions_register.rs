@@ -10,15 +10,15 @@ use gpui_component::{
 use crate::ledger::{accounts::Account, transactions::Posting};
 use crate::ledger::{amounts::Amount, transactions::Transaction};
 
-use super::state::{CurrencyConverter, State};
+use super::ledger_state::{CurrencyConverter, LedgerState};
 
 pub struct RegisterView {
-    state: Entity<State>,
+    state: Entity<LedgerState>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
 }
 
 impl RegisterView {
-    pub fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Entity<LedgerState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
