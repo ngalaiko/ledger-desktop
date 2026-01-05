@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
@@ -10,6 +8,7 @@ use gpui_component::{
 };
 
 use ledger::{Account, TreeNode};
+use state::AppState;
 
 use super::components::checkbox::{Checkbox, CheckboxState};
 use super::ledger_state::LedgerState;
@@ -17,7 +16,6 @@ use super::ledger_state::LedgerState;
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
     state: Entity<LedgerState>,
-    selected_accounts: HashSet<Account>,
 }
 
 impl AccountsTreeView {
@@ -38,27 +36,24 @@ impl AccountsTreeView {
         Self {
             tree_state,
             state: state.clone(),
-            selected_accounts: HashSet::new(),
         }
     }
 
-    pub fn selected_accounts(&self) -> &HashSet<Account> {
-        &self.selected_accounts
-    }
-
-    fn is_selected(&self, account: &Account) -> bool {
-        self.selected_accounts.contains(account)
-    }
-
     /// Calculate the checkbox state for a node based on its children
-    fn calculate_state(&self, node: &TreeNode, account: &Account) -> CheckboxState {
+    fn calculate_state(
+        &self,
+        node: &TreeNode,
+        account: &Account,
+        cx: &mut Context<Self>,
+    ) -> CheckboxState {
         // Find the node in the tree
         let target_node = node.find_node(account);
+        let selected_accounts = AppState::get_selected_accounts(cx);
 
         if let Some(node) = target_node {
             if node.children.is_empty() {
                 // Leaf node: just check if it's selected
-                if self.is_selected(&node.account) {
+                if selected_accounts.contains(&node.account) {
                     CheckboxState::Checked
                 } else {
                     CheckboxState::Unchecked
@@ -72,7 +67,7 @@ impl AccountsTreeView {
                     .collect();
                 let selected_count = all_descendants
                     .iter()
-                    .filter(|a| self.selected_accounts.contains(a))
+                    .filter(|a| selected_accounts.contains(a))
                     .count();
 
                 if selected_count == 0 {
@@ -89,7 +84,7 @@ impl AccountsTreeView {
     }
 
     fn toggle_selection(&mut self, node: &TreeNode, account: Account, cx: &mut Context<Self>) {
-        let state = self.calculate_state(node, &account);
+        let state = self.calculate_state(node, &account, cx);
 
         // Get all descendants (including the account itself)
         let mut descendants = node.get_descendants(&account);
@@ -99,16 +94,19 @@ impl AccountsTreeView {
 
         match state {
             CheckboxState::Unchecked => {
+                let mut selected_accounts = AppState::get_selected_accounts(cx);
                 // Check all descendants
                 for descendant in descendants {
-                    self.selected_accounts.insert(descendant);
+                    selected_accounts.insert(descendant);
                 }
+                AppState::update_selected_accounts(selected_accounts, cx);
             }
             CheckboxState::Checked | CheckboxState::Indeterminate => {
-                // Uncheck all descendants
+                let mut selected_accounts = AppState::get_selected_accounts(cx);
                 for descendant in descendants {
-                    self.selected_accounts.remove(&descendant);
+                    selected_accounts.remove(&descendant);
                 }
+                AppState::update_selected_accounts(selected_accounts, cx);
             }
         }
 
@@ -146,8 +144,8 @@ impl Render for AccountsTreeView {
                     let account = Account::parse(&item.id);
 
                     // Get the tree node to calculate state
-                    let tree_node = &state_entity.read(cx).accounts;
-                    let checkbox_state = this.calculate_state(tree_node, &account);
+                    let tree_node = &state_entity.read(cx).accounts.clone();
+                    let checkbox_state = this.calculate_state(tree_node, &account, cx);
 
                     let with_checkbox = div()
                         .flex()

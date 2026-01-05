@@ -34,23 +34,21 @@ impl Window {
         let chart_state = cx.new(|cx| BalanceChart::new(state.clone(), cx));
 
         cx.observe(&accounts_tree, |this, accounts_tree, cx| {
-            accounts_tree.update(cx, |accounts_tree, cx| {
-                this.register_view.update(cx, |state, cx| {
-                    state.refresh_data(accounts_tree.selected_accounts(), cx);
+            accounts_tree.update(cx, |_this, cx| {
+                this.register_view.update(cx, |this, cx| {
+                    this.refresh_data(cx);
                 });
 
-                this.chart_state.update(cx, |state, cx| {
-                    state.set_visible_accounts(accounts_tree.selected_accounts().clone(), cx);
+                this.chart_state.update(cx, |this, cx| {
+                    this.refresh_data(cx);
                 });
             })
         })
         .detach();
 
         cx.observe(&state, |this, _state, cx| {
-            this.accounts_tree.update(cx, |accounts_tree, cx| {
-                this.register_view.update(cx, |register_view, cx| {
-                    register_view.refresh_data(accounts_tree.selected_accounts(), cx);
-                });
+            this.register_view.update(cx, |this, cx| {
+                this.refresh_data(cx);
             });
         })
         .detach();
@@ -93,14 +91,14 @@ impl Render for Window {
                                                 selected_commodity,
                                                 available_commodities,
                                             ))
-                                            .on_action(cx.listener(
-                                                |_this, commodity: &SelectCommodity, _window, cx| {
+                                            .on_action(
+                                                |commodity: &SelectCommodity, _window, cx| {
                                                     AppState::update_commodity(
                                                         commodity.commodity.clone(),
                                                         cx,
                                                     );
                                                 },
-                                            )),
+                                            ),
                                     )
                                     .child(div().size_full().p_2().child(self.chart_state.clone()))
                                     .child(self.register_view.clone()),

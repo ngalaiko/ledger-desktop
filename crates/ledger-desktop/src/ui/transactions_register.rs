@@ -25,13 +25,16 @@ impl RegisterView {
         Self { state, table_state }
     }
 
-    pub fn refresh_data(&mut self, visible_accounts: &HashSet<Account>, cx: &mut Context<Self>) {
+    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
         let state = self.state.read(cx);
         let converter = &state.currency_converter;
         let transactions = &state.transactions;
+        let visible_accounts = AppState::get_selected_accounts(cx);
         let visible_transactions = transactions
             .iter()
-            .filter_map(|transaction| filter_map_visible_transaction(transaction, visible_accounts))
+            .filter_map(|transaction| {
+                filter_map_visible_transaction(transaction, &visible_accounts)
+            })
             .map(|tx| convert_transaction(converter, &tx, AppState::get_commodity(cx)))
             .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {

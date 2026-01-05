@@ -7,6 +7,7 @@ version.workspace = true
 [dependencies]
 state = { path = "../state" }
 ledger = { path = "../ledger" }
+period = { path = "../period" }
 
 thiserror.workspace = true
 chrono.workspace = true

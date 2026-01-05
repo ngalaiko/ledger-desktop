@@ -20,11 +20,10 @@ use gpui_component::{
     v_flex, StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
+use ledger::Balance;
 use state::AppState;
 
-use ledger::{Account, Balance};
-
-use super::components::period_selector::{period_selector, Period, SelectPeriod};
+use super::components::period_selector::{period_selector, SelectPeriod};
 use super::ledger_state::{CurrencyConverter, LedgerState};
 
 // Constants for chart layout
@@ -43,8 +42,6 @@ pub struct BalanceChart {
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
     colors: Vec<Hsla>,
-    visible_accounts: HashSet<Account>,
-    period: Period,
 }
 
 impl BalanceChart {
@@ -64,25 +61,13 @@ impl BalanceChart {
             mouse_position: None,
             hovered_idx: None,
             colors,
-            visible_accounts: HashSet::new(),
-            period: Period::D30,
         }
     }
 
-    fn set_period(&mut self, period: Period, cx: &mut Context<Self>) {
-        self.period = period;
-        self.refresh_data(cx);
-        cx.notify();
-    }
-
-    pub fn set_visible_accounts(&mut self, accounts: HashSet<Account>, cx: &mut Context<Self>) {
-        self.visible_accounts = accounts;
-        self.refresh_data(cx);
-        cx.notify();
-    }
-
-    fn refresh_data(&mut self, cx: &mut Context<Self>) {
+    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
         let state = self.state.read(cx);
+        let visible_accounts = AppState::get_selected_accounts(cx);
+        let period = AppState::get_period(cx);
 
         // Collect all dates where any visible account has transactions
         let all_dates = state
@@ -90,7 +75,7 @@ impl BalanceChart {
             .iter()
             .filter(|(account, _)| {
                 // Check if account is in visible accounts or a child of any visible account
-                self.visible_accounts
+                visible_accounts
                     .iter()
                     .any(|visible_account| visible_account.is_parent_of(account))
             })
@@ -108,7 +93,7 @@ impl BalanceChart {
         let max_date = *all_dates.last().expect("at least one date exists");
 
         // Calculate period start date based on max_date (latest transaction)
-        let period_start = self.period.start_date(max_date).unwrap_or(min_date);
+        let period_start = period.start_date(max_date).unwrap_or(min_date);
 
         // Apply period filter: use max of period_start and min_date
         let filtered_start = period_start.max(min_date);
@@ -122,7 +107,7 @@ impl BalanceChart {
             // Aggregate balances from all visible accounts at this date
             let mut daily_balance = Balance::new();
 
-            for visible_account in &self.visible_accounts {
+            for visible_account in &visible_accounts {
                 let balance = state
                     .running_balance
                     .get_balance(visible_account, current_date);
@@ -180,6 +165,7 @@ fn get_color(colors: &[Hsla], commodity: &String) -> Hsla {
 
 impl Render for BalanceChart {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let period = AppState::get_period(cx);
         let plot_inner = self.plot_inner.clone();
         let tooltip_data = {
             match (self.mouse_position, plot_inner.bounds.get()) {
@@ -194,10 +180,10 @@ impl Render for BalanceChart {
             .child(
                 h_flex()
                     .justify_end()
-                    .child(period_selector(self.period))
-                    .on_action(cx.listener(|this, period: &SelectPeriod, _window, cx| {
-                        this.set_period(period.period, cx);
-                    })),
+                    .child(period_selector(period))
+                    .on_action(|action: &SelectPeriod, _window, cx| {
+                        AppState::update_period(action.period, cx);
+                    }),
             )
             .child(
                 div()

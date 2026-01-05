@@ -5,6 +5,9 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+period = { path = "../period" }
+ledger = { path = "../ledger" }
+
 gpui.workspace = true
 anyhow.workspace = true
 serde.workspace = true

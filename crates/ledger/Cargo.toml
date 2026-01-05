@@ -10,6 +10,7 @@ chrono.workspace = true
 fastnum.workspace = true
 gpui.workspace = true
 futures-lite.workspace = true
+serde.workspace = true
 
 async-process = "2.5"
 async-channel = "2.5"

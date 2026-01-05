@@ -1,5 +1,9 @@
+use std::collections::HashSet;
+
 use anyhow::{anyhow, Error};
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
+use ledger::Account;
+use period::Period;
 
 pub fn init(cx: &mut App) {
     AppState::set_global(cx.new(AppState::new), cx);
@@ -28,6 +32,8 @@ macro_rules! setting_accessors {
 
 setting_accessors! {
     pub commodity: Option<String>,
+    pub selected_accounts: HashSet<Account>,
+    pub period: Period,
 }
 
 static CURRENT_VERSION: &str = "1.0";
@@ -36,6 +42,8 @@ static CURRENT_VERSION: &str = "1.0";
 pub struct State {
     pub version: String,
     pub commodity: Option<String>,
+    pub selected_accounts: HashSet<Account>,
+    pub period: Period,
 }
 
 impl Default for State {
@@ -43,6 +51,8 @@ impl Default for State {
         Self {
             version: CURRENT_VERSION.to_string(),
             commodity: None,
+            selected_accounts: HashSet::new(),
+            period: Period::D30,
         }
     }
 }
