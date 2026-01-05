@@ -1,13 +1,21 @@
 use std::collections::HashSet;
 
 use anyhow::{anyhow, Error};
-use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Subscription, Task};
 use ledger::Account;
 use period::Period;
 
 pub fn init(cx: &mut App) {
     AppState::set_global(cx.new(AppState::new), cx);
 }
+
+pub enum StateEvent {
+    CommodityChanged(Option<String>),
+    SelectedAccountsChanged(HashSet<Account>),
+    PeriodChanged(Period),
+}
+
+impl EventEmitter<StateEvent> for AppState {}
 
 macro_rules! setting_accessors {
     ($(pub $field:ident: $type:ty),* $(,)?) => {
@@ -21,6 +29,7 @@ macro_rules! setting_accessors {
                     pub fn [<update_ $field>](value: $type, cx: &mut App) {
                         Self::global(cx).update(cx, |this, cx| {
                             this.state_values.$field = value;
+                            cx.emit(StateEvent::[<$field:camel Changed>](this.state_values.$field.clone()));
                             cx.notify();
                         });
                     }

@@ -29,6 +29,7 @@ pub struct Window {
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
     state: Entity<LedgerState>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Window {
@@ -37,6 +38,44 @@ impl Window {
         let accounts_tree = accounts_tree::init(state.clone(), cx);
         let register_view = transactions_register::init(state.clone(), window, cx);
         let chart_state = balance_chart::init(state.clone(), cx);
+
+        let app_state = AppState::global(cx);
+
+        let mut subscriptions = vec![];
+
+        subscriptions.push(
+            // observe state changes and update views accordingly
+            {
+                let register_view = register_view.clone();
+                let chart_state = chart_state.clone();
+                cx.subscribe(
+                    &app_state,
+                    move |_window, _app_state, event, _cx| match event {
+                        state::StateEvent::CommodityChanged(_) => {
+                            register_view.update(_cx, |this, cx| {
+                                this.refresh_data(cx);
+                            });
+                            chart_state.update(_cx, |this, cx| {
+                                this.refresh_data(cx);
+                            });
+                        }
+                        state::StateEvent::SelectedAccountsChanged(_) => {
+                            register_view.update(_cx, |this, cx| {
+                                this.refresh_data(cx);
+                            });
+                            chart_state.update(_cx, |this, cx| {
+                                this.refresh_data(cx);
+                            });
+                        }
+                        state::StateEvent::PeriodChanged(_) => {
+                            chart_state.update(_cx, |this, cx| {
+                                this.refresh_data(cx);
+                            });
+                        }
+                    },
+                )
+            },
+        );
 
         cx.observe(&accounts_tree, |this, accounts_tree, cx| {
             accounts_tree.update(cx, |_this, cx| {
@@ -63,6 +102,7 @@ impl Window {
             accounts_tree,
             register_view,
             state,
+            _subscriptions: subscriptions,
         }
     }
 }
