@@ -19,7 +19,7 @@ fn main() {
                 }),
                 ..WindowOptions::default()
             },
-            |window, cx| {
+            |window: &mut gpui::Window, cx| {
                 let view = cx.new(|cx| ui::Window::new(window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             },
