@@ -8,6 +8,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use ledger::{Account, Balance, CurrencyAmount, LedgerHandle, Price, Transaction, TreeNode};
 
+pub fn init(cx: &mut App) -> Entity<LedgerState> {
+    cx.new(|cx| LedgerState::new(cx))
+}
+
 pub struct LedgerState {
     pub accounts: TreeNode,
     pub transactions: Vec<Transaction>,
@@ -19,7 +23,7 @@ pub struct LedgerState {
 }
 
 impl LedgerState {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         let ledger_handle = LedgerHandle::spawn(cx, None);
         let mut ledger_state = Self {
             accounts: TreeNode::new(),

@@ -3153,6 +3153,7 @@ dependencies = [
  "serde",
  "state",
  "thiserror 2.0.17",
+ "ui",
 ]
 
 [[package]]
@@ -6174,6 +6175,14 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "ui"
+version = "0.0.1"
+dependencies = [
+ "gpui",
+ "gpui-component",
 ]
 
 [[package]]

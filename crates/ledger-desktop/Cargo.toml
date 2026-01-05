@@ -8,6 +8,7 @@ version.workspace = true
 state = { path = "../state" }
 ledger = { path = "../ledger" }
 period = { path = "../period" }
+ui = { path = "../ui" }
 
 thiserror.workspace = true
 chrono.workspace = true

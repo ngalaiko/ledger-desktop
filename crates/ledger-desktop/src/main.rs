@@ -30,8 +30,7 @@ fn main() {
                 gpui_component::init(cx);
                 state::init(cx);
 
-                let view = cx.new(|cx| ui::Window::new(window, cx));
-                Root::new(view, window, cx)
+                Root::new(ui::init(window, cx), window, cx)
             })
         })
         .ok();

@@ -12,6 +12,10 @@ use ledger::{Account, Amount, Posting, Transaction};
 
 use super::ledger_state::{CurrencyConverter, LedgerState};
 
+pub fn init(state: Entity<LedgerState>, window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
+    cx.new(|cx| RegisterView::new(state.clone(), window, cx))
+}
+
 pub struct RegisterView {
     state: Entity<LedgerState>,
     table_state: Entity<TableState<TransactionTableDelegate>>,

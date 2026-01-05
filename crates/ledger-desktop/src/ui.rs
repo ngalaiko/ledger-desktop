@@ -16,8 +16,13 @@ use state::AppState;
 use self::accounts_tree::AccountsTreeView;
 use self::balance_chart::BalanceChart;
 use self::components::commodity_selector::{commodity_selector, SelectCommodity};
+use self::components::period_selector::{period_selector, SelectPeriod};
 use self::ledger_state::LedgerState;
 use self::transactions_register::RegisterView;
+
+pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
+    cx.new(|cx| Window::new(window, cx))
+}
 
 pub struct Window {
     chart_state: Entity<BalanceChart>,
@@ -27,11 +32,11 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| LedgerState::new(cx));
-        let accounts_tree = cx.new(|cx| AccountsTreeView::new(state.clone(), cx));
-        let register_view = cx.new(|cx| RegisterView::new(state.clone(), window, cx));
-        let chart_state = cx.new(|cx| BalanceChart::new(state.clone(), cx));
+    fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
+        let state = ledger_state::init(cx);
+        let accounts_tree = accounts_tree::init(state.clone(), cx);
+        let register_view = transactions_register::init(state.clone(), window, cx);
+        let chart_state = balance_chart::init(state.clone(), cx);
 
         cx.observe(&accounts_tree, |this, accounts_tree, cx| {
             accounts_tree.update(cx, |_this, cx| {
@@ -65,6 +70,7 @@ impl Window {
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read(cx);
+        let period = AppState::get_period(cx);
         let available_commodities = state.currency_converter.available_commodities();
         let selected_commodity = AppState::get_commodity(cx);
 
@@ -86,18 +92,25 @@ impl Render for Window {
                                     .child(
                                         h_flex()
                                             .justify_end()
-                                            .p_2()
-                                            .child(commodity_selector(
-                                                selected_commodity,
-                                                available_commodities,
-                                            ))
-                                            .on_action(
-                                                |commodity: &SelectCommodity, _window, cx| {
-                                                    AppState::update_commodity(
-                                                        commodity.commodity.clone(),
-                                                        cx,
-                                                    );
+                                            .child(div().child(period_selector(period)).on_action(
+                                                |action: &SelectPeriod, _window, cx| {
+                                                    AppState::update_period(action.period, cx);
                                                 },
+                                            ))
+                                            .child(
+                                                div()
+                                                    .child(commodity_selector(
+                                                        selected_commodity,
+                                                        available_commodities,
+                                                    ))
+                                                    .on_action(
+                                                        |action: &SelectCommodity, _window, cx| {
+                                                            AppState::update_commodity(
+                                                                action.commodity.clone(),
+                                                                cx,
+                                                            );
+                                                        },
+                                                    ),
                                             ),
                                     )
                                     .child(div().size_full().p_2().child(self.chart_state.clone()))

@@ -10,8 +10,12 @@ use gpui_component::{
 use ledger::{Account, TreeNode};
 use state::AppState;
 
-use super::components::checkbox::{Checkbox, CheckboxState};
 use super::ledger_state::LedgerState;
+use ui::checkbox::{Checkbox, CheckboxState};
+
+pub fn init(state: Entity<LedgerState>, cx: &mut App) -> Entity<AccountsTreeView> {
+    cx.new(|cx| AccountsTreeView::new(state.clone(), cx))
+}
 
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
@@ -19,7 +23,7 @@ pub struct AccountsTreeView {
 }
 
 impl AccountsTreeView {
-    pub fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
+    fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
         // Rebuild tree items with accounts when the state changes
