@@ -141,6 +141,39 @@ impl TreeNode {
         self.add_account_recursive(&account, 0)
     }
 
+    pub fn find_node(&self, account: &Account) -> Option<&TreeNode> {
+        if &self.account == account {
+            return Some(self);
+        }
+        for child in &self.children {
+            if let Some(found) = Self::find_node(child, account) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    pub fn get_descendants(&self, account: &Account) -> Vec<Account> {
+        for child in &self.children {
+            if &child.account == account {
+                return child.collect_all_accounts();
+            }
+            let descendants = child.get_descendants(account);
+            if !descendants.is_empty() {
+                return descendants;
+            }
+        }
+        Vec::new()
+    }
+
+    pub fn collect_all_accounts(&self) -> Vec<Account> {
+        let mut accounts = vec![self.account.clone()];
+        for child in &self.children {
+            accounts.extend(child.collect_all_accounts());
+        }
+        accounts
+    }
+
     fn add_account_recursive(&mut self, account: &Account, depth: usize) {
         if depth >= account.segments.len() {
             return;

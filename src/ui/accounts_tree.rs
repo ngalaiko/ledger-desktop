@@ -50,33 +50,10 @@ impl AccountsTreeView {
         self.selected_accounts.contains(account)
     }
 
-    /// Get all descendant accounts for a given node
-    fn get_descendants(node: &TreeNode, account: &Account) -> Vec<Account> {
-        for child in &node.children {
-            if &child.account == account {
-                return Self::collect_all_accounts(child);
-            }
-            let descendants = Self::get_descendants(child, account);
-            if !descendants.is_empty() {
-                return descendants;
-            }
-        }
-        Vec::new()
-    }
-
-    /// Collect all accounts in a subtree
-    fn collect_all_accounts(node: &TreeNode) -> Vec<Account> {
-        let mut accounts = vec![node.account.clone()];
-        for child in &node.children {
-            accounts.extend(Self::collect_all_accounts(child));
-        }
-        accounts
-    }
-
     /// Calculate the checkbox state for a node based on its children
     fn calculate_state(&self, node: &TreeNode, account: &Account) -> CheckboxState {
         // Find the node in the tree
-        let target_node = Self::find_node(node, account);
+        let target_node = node.find_node(account);
 
         if let Some(node) = target_node {
             if node.children.is_empty() {
@@ -91,7 +68,7 @@ impl AccountsTreeView {
                 let all_descendants: Vec<Account> = node
                     .children
                     .iter()
-                    .flat_map(|child| Self::collect_all_accounts(child))
+                    .flat_map(|child| child.collect_all_accounts())
                     .collect();
                 let selected_count = all_descendants
                     .iter()
@@ -111,24 +88,11 @@ impl AccountsTreeView {
         }
     }
 
-    /// Find a node in the tree by account
-    fn find_node<'a>(node: &'a TreeNode, account: &Account) -> Option<&'a TreeNode> {
-        if &node.account == account {
-            return Some(node);
-        }
-        for child in &node.children {
-            if let Some(found) = Self::find_node(child, account) {
-                return Some(found);
-            }
-        }
-        None
-    }
-
     fn toggle_selection(&mut self, node: &TreeNode, account: Account, cx: &mut Context<Self>) {
         let state = self.calculate_state(node, &account);
 
         // Get all descendants (including the account itself)
-        let mut descendants = Self::get_descendants(node, &account);
+        let mut descendants = node.get_descendants(&account);
         if descendants.is_empty() {
             descendants = vec![account.clone()];
         }
