@@ -20,6 +20,7 @@ use gpui_component::{
     v_flex, StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
+use state::AppState;
 
 use crate::ledger::accounts::{Account, Balance};
 
@@ -128,7 +129,7 @@ impl BalanceChart {
                 let converted_balance = convert_balance(
                     converter,
                     &balance,
-                    state.selected_commodity.as_deref(),
+                    AppState::get_commodity(cx).as_deref(),
                     current_date,
                 );
                 daily_balance.add(&converted_balance);

@@ -3137,6 +3137,7 @@ dependencies = [
  "pin-project-lite",
  "schemars",
  "serde",
+ "state",
  "thiserror 2.0.17",
 ]
 
@@ -5376,6 +5377,19 @@ dependencies = [
  "proc-macro-error2",
  "quote",
  "syn 2.0.113",
+]
+
+[[package]]
+name = "state"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-fs",
+ "dirs 6.0.0",
+ "gpui",
+ "paste",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

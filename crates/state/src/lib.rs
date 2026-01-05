@@ -1,0 +1,145 @@
+use anyhow::{anyhow, Error};
+use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
+
+pub fn init(cx: &mut App) {
+    AppState::set_global(cx.new(AppState::new), cx);
+}
+
+macro_rules! setting_accessors {
+    ($(pub $field:ident: $type:ty),* $(,)?) => {
+        impl AppState {
+            $(
+                paste::paste! {
+                    pub fn [<get_ $field>](cx: &App) -> $type {
+                        Self::global(cx).read(cx).state_values.$field.clone()
+                    }
+
+                    pub fn [<update_ $field>](value: $type, cx: &mut App) {
+                        Self::global(cx).update(cx, |this, cx| {
+                            this.state_values.$field = value;
+                            cx.notify();
+                        });
+                    }
+                }
+            )*
+        }
+    };
+}
+
+setting_accessors! {
+    pub commodity: Option<String>,
+}
+
+static CURRENT_VERSION: &str = "1.0";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct State {
+    pub version: String,
+    pub commodity: Option<String>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_VERSION.to_string(),
+            commodity: None,
+        }
+    }
+}
+
+impl AsRef<State> for State {
+    fn as_ref(&self) -> &State {
+        self
+    }
+}
+
+struct GlobalAppState(Entity<AppState>);
+
+impl Global for GlobalAppState {}
+
+pub struct AppState {
+    state_values: State,
+    _subscriptions: Vec<Subscription>,
+    _tasks: Vec<Task<()>>,
+}
+
+impl AppState {
+    pub fn global(cx: &App) -> Entity<Self> {
+        cx.global::<GlobalAppState>().0.clone()
+    }
+
+    pub(crate) fn set_global(state: Entity<Self>, cx: &mut App) {
+        cx.set_global(GlobalAppState(state));
+    }
+
+    fn new(cx: &mut Context<Self>) -> Self {
+        let load_state = Self::load_state(cx);
+
+        let mut tasks = vec![];
+        let mut subscriptions = vec![];
+
+        subscriptions.push(
+            // observe and automatically save state on change
+            cx.observe_self(|this, cx| {
+                this.save_state(cx);
+            }),
+        );
+
+        tasks.push(
+            // load the initial settings
+            cx.spawn(async move |this, cx| {
+                if let Ok(state) = load_state.await {
+                    this.update(cx, |this, cx| {
+                        this.state_values = state;
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            }),
+        );
+
+        Self {
+            state_values: State::default(),
+            _subscriptions: subscriptions,
+            _tasks: tasks,
+        }
+    }
+
+    fn save_state(&self, cx: &App) {
+        if let Ok(state) = serde_json::to_vec(&self.state_values) {
+            let task: Task<Result<(), Error>> = cx.background_spawn(async move {
+                let config_dir =
+                    dirs::config_dir().ok_or(anyhow!("could not determine config directory"))?;
+                let app_config_dir = config_dir.join("ledger-desktop");
+                async_fs::create_dir_all(&app_config_dir).await?;
+
+                let config_file = app_config_dir.join("state.json");
+                async_fs::write(&config_file, state).await?;
+
+                Ok(())
+            });
+
+            task.detach()
+        }
+    }
+
+    fn load_state(cx: &App) -> Task<Result<State, Error>> {
+        cx.background_spawn(async move {
+            let config_dir =
+                dirs::config_dir().ok_or(anyhow!("could not determine config directory"))?;
+            let config_file = config_dir.join("ledger-desktop").join("state.json");
+
+            if config_file.exists() {
+                let data = async_fs::read(&config_file).await?;
+                let state: State = serde_json::from_slice(&data)?;
+                if state.version != CURRENT_VERSION {
+                    Ok(State::default())
+                } else {
+                    Ok(state)
+                }
+            } else {
+                Ok(State::default())
+            }
+        })
+    }
+}

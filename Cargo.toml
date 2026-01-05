@@ -12,19 +12,26 @@ repository = "https://github.com/ngalaiko/ledger-desktop"
 license = "GPL-3.0-only"
 
 [workspace.dependencies]
+# errors
 thiserror = "2.0"
+anyhow = "1.0"
+
+# data types
 chrono = "0.4"
 fastnum = "0.7"
 
+# serialization
 serde = "1.0"
 schemars = "1.2"
 
+# async
 futures-lite = "2.6"
 async-process = "2.5"
 async-channel = "2.5"
 async-io = "2.6"
 pin-project-lite = "0.2"
 
+# gpui
 gpui = "0.2.2"
 gpui-component = "0.5.0"
 gpui-component-assets = "0.5.0"

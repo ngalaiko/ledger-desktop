@@ -6,6 +6,7 @@ use gpui_component::{
     h_flex,
     table::{Column, Table, TableDelegate, TableState},
 };
+use state::AppState;
 
 use crate::ledger::{accounts::Account, transactions::Posting};
 use crate::ledger::{amounts::Amount, transactions::Transaction};
@@ -29,11 +30,10 @@ impl RegisterView {
         let state = self.state.read(cx);
         let converter = &state.currency_converter;
         let transactions = &state.transactions;
-        let selected_commodity = state.selected_commodity.as_deref();
         let visible_transactions = transactions
             .iter()
             .filter_map(|transaction| filter_map_visible_transaction(transaction, visible_accounts))
-            .map(|tx| convert_transaction(converter, &tx, selected_commodity))
+            .map(|tx| convert_transaction(converter, &tx, AppState::get_commodity(cx)))
             .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();
@@ -71,7 +71,7 @@ fn filter_map_visible_transaction(
 fn convert_transaction(
     converter: &CurrencyConverter,
     transaction: &Transaction,
-    target_commodity: Option<&str>,
+    target_commodity: Option<String>,
 ) -> Transaction {
     let Some(target_commodity) = target_commodity else {
         // No conversion, return transaction as-is
@@ -84,7 +84,7 @@ fn convert_transaction(
             .iter()
             .map(|p| {
                 if let Some(converted_amount) =
-                    converter.convert(&p.amount.value, target_commodity, transaction.date)
+                    converter.convert(&p.amount.value, target_commodity.as_str(), transaction.date)
                 {
                     Posting {
                         amount: Amount {

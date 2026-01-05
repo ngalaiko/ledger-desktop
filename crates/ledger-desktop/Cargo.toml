@@ -1,13 +1,12 @@
 [package]
 name = "ledger-desktop"
 publish.workspace = true
-authors.workspace = true
 edition.workspace = true
-repository.workspace = true
-license.workspace = true
 version.workspace = true
 
 [dependencies]
+state = { path = "../state" }
+
 thiserror.workspace = true
 chrono.workspace = true
 fastnum.workspace = true

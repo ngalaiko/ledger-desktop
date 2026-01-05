@@ -17,7 +17,6 @@ pub struct LedgerState {
     pub transactions: Vec<Transaction>,
     pub running_balance: RunningBalance,
     pub currency_converter: CurrencyConverter,
-    pub selected_commodity: Option<String>,
     pub error: Option<String>,
 
     ledger_handle: LedgerHandle,
@@ -30,7 +29,6 @@ impl LedgerState {
             accounts: TreeNode::new(),
             running_balance: RunningBalance::new(),
             currency_converter: CurrencyConverter::new(),
-            selected_commodity: None,
             transactions: Vec::new(),
             error: None,
             ledger_handle,
@@ -168,11 +166,6 @@ impl LedgerState {
             }
         })
         .detach();
-    }
-
-    pub fn set_selected_commodity(&mut self, commodity: Option<String>, cx: &mut Context<Self>) {
-        self.selected_commodity = commodity;
-        cx.notify();
     }
 }
 

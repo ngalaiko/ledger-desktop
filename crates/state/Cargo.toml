@@ -1,0 +1,15 @@
+[package]
+name = "state"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+
+dirs = "6.0"
+async-fs = "2.2"
+serde_json = "1.0"
+paste = "1.0"

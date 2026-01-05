@@ -11,6 +11,7 @@ use gpui_component::{
     resizable::{h_resizable, resizable_panel},
     v_flex, TitleBar,
 };
+use state::AppState;
 
 use self::accounts_tree::AccountsTreeView;
 use self::balance_chart::BalanceChart;
@@ -67,7 +68,7 @@ impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read(cx);
         let available_commodities = state.currency_converter.available_commodities();
-        let selected_commodity = state.selected_commodity.clone();
+        let selected_commodity = AppState::get_commodity(cx);
 
         v_flex()
             .size_full()
@@ -93,13 +94,11 @@ impl Render for Window {
                                                 available_commodities,
                                             ))
                                             .on_action(cx.listener(
-                                                |this, commodity: &SelectCommodity, _window, cx| {
-                                                    this.state.update(cx, |state, cx| {
-                                                        state.set_selected_commodity(
-                                                            commodity.commodity.clone(),
-                                                            cx,
-                                                        );
-                                                    });
+                                                |_this, commodity: &SelectCommodity, _window, cx| {
+                                                    AppState::update_commodity(
+                                                        commodity.commodity.clone(),
+                                                        cx,
+                                                    );
                                                 },
                                             )),
                                     )
