@@ -1,4 +1,3 @@
-mod ledger;
 mod ui;
 
 #[allow(clippy::wildcard_imports)]

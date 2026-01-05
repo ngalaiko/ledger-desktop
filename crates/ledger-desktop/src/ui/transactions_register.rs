@@ -8,8 +8,7 @@ use gpui_component::{
 };
 use state::AppState;
 
-use crate::ledger::{accounts::Account, transactions::Posting};
-use crate::ledger::{amounts::Amount, transactions::Transaction};
+use ledger::{Account, Amount, Posting, Transaction};
 
 use super::ledger_state::{CurrencyConverter, LedgerState};
 

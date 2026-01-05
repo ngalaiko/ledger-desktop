@@ -26,10 +26,6 @@ schemars = "1.2"
 
 # async
 futures-lite = "2.6"
-async-process = "2.5"
-async-channel = "2.5"
-async-io = "2.6"
-pin-project-lite = "0.2"
 
 # gpui
 gpui = "0.2.2"

@@ -3122,7 +3122,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
-name = "ledger-desktop"
+name = "ledger"
 version = "0.0.1"
 dependencies = [
  "async-channel 2.5.0",
@@ -3132,9 +3132,21 @@ dependencies = [
  "fastnum",
  "futures-lite 2.6.1",
  "gpui",
+ "pin-project-lite",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "ledger-desktop"
+version = "0.0.1"
+dependencies = [
+ "chrono",
+ "fastnum",
+ "futures-lite 2.6.1",
+ "gpui",
  "gpui-component",
  "gpui-component-assets",
- "pin-project-lite",
+ "ledger",
  "schemars",
  "serde",
  "state",

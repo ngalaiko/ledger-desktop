@@ -1,9 +1,3 @@
-pub mod accounts;
-pub mod amounts;
-pub mod prices;
-mod sexpr;
-pub mod transactions;
-
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -14,6 +8,8 @@ use async_io::Timer;
 use async_process::{Command, Stdio};
 use futures_lite::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use futures_lite::{Future, Stream};
+
+use crate::{prices, sexpr, transactions};
 
 const MARKER: &[u8] = b"__END_OF_RESPONSE__";
 

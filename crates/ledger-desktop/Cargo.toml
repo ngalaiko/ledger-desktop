@@ -6,20 +6,14 @@ version.workspace = true
 
 [dependencies]
 state = { path = "../state" }
+ledger = { path = "../ledger" }
 
 thiserror.workspace = true
 chrono.workspace = true
 fastnum.workspace = true
-
+futures-lite.workspace = true
 serde.workspace = true
 schemars.workspace = true
-
-futures-lite.workspace = true
-async-process.workspace = true
-async-channel.workspace = true
-async-io.workspace = true
-pin-project-lite.workspace = true
-
 gpui.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true

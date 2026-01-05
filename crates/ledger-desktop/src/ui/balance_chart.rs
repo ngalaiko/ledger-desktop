@@ -22,7 +22,7 @@ use gpui_component::{
 use gpui_component::{ActiveTheme, PixelsExt};
 use state::AppState;
 
-use crate::ledger::accounts::{Account, Balance};
+use ledger::{Account, Balance};
 
 use super::components::period_selector::{period_selector, Period, SelectPeriod};
 use super::ledger_state::{CurrencyConverter, LedgerState};
