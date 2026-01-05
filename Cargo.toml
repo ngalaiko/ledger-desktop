@@ -1,13 +1,17 @@
-[package]
-name = "ledger-desktop"
-description = "Desktop app for the ledger cli"
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+default-members = ["crates/ledger-desktop"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
 publish = false
 authors = ["Nikita Galaiko <nikita@galaiko.rocks>"]
-edition = "2021"
 repository = "https://github.com/ngalaiko/ledger-desktop"
 license = "GPL-3.0-only"
 
-[dependencies]
+[workspace.dependencies]
 thiserror = "2.0"
 chrono = "0.4"
 fastnum = "0.7"
@@ -25,10 +29,10 @@ gpui = "0.2.2"
 gpui-component = "0.5.0"
 gpui-component-assets = "0.5.0"
 
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = "deny"
 perf = "deny"
 correctness = "deny"
