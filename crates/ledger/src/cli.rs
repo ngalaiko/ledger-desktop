@@ -18,6 +18,48 @@ impl Cli {
         }
     }
 
+    pub async fn files(
+        &self,
+    ) -> Result<impl Stream<Item = Result<std::path::PathBuf, Error>>, Error> {
+        let stream = self.exec(["stats"]).await?;
+
+        let stream = futures_lite::stream::unfold(
+            (stream.boxed(), false),
+            |(mut stream, mut in_files_section)| async move {
+                loop {
+                    match stream.next().await {
+                        Some(Ok(line)) => {
+                            if line.contains("Files these postings came from:") {
+                                in_files_section = true;
+                                continue;
+                            }
+
+                            let trimmed = line.trim();
+
+                            if trimmed.is_empty() {
+                                if in_files_section {
+                                    return None; // End of files section
+                                }
+                                continue;
+                            }
+
+                            if in_files_section {
+                                let path = std::path::PathBuf::from(trimmed);
+                                return Some((Ok(path), (stream, in_files_section)));
+                            }
+                        }
+                        Some(Err(e)) => {
+                            return Some((Err(e), (stream, in_files_section)));
+                        }
+                        None => return None,
+                    }
+                }
+            },
+        );
+
+        Ok(stream)
+    }
+
     pub async fn prices(&self) -> Result<impl Stream<Item = Result<Price, Error>>, Error> {
         let stream = self.exec(["prices"]).await?;
         Ok(stream.map(|result| match result {

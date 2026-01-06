@@ -1,6 +1,6 @@
 use anyhow::Error;
 use futures_lite::StreamExt;
-use gpui::{App, AppContext, Context, Entity, Global, Task};
+use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
 
 use crate::{
     balance::RunningBalance, cli::Cli, converter::CurrencyConverter, Price, Transaction, TreeNode,
@@ -17,6 +17,7 @@ impl Global for GlobalFile {}
 struct FileState {
     accounts: TreeNode,
     transactions: Vec<Transaction>,
+    files: Vec<std::path::PathBuf>,
     running_balance: RunningBalance,
     currency_converter: CurrencyConverter,
 }
@@ -26,6 +27,7 @@ impl Default for FileState {
         Self {
             accounts: TreeNode::new(),
             transactions: Vec::new(),
+            files: Vec::new(),
             running_balance: RunningBalance::new(),
             currency_converter: CurrencyConverter::new(),
         }
@@ -37,6 +39,7 @@ impl FileState {
         enum Item {
             Transaction(Transaction),
             Price(Price),
+            File(std::path::PathBuf),
         }
 
         cx.background_spawn({
@@ -46,13 +49,17 @@ impl FileState {
                 let mut running_balance = RunningBalance::new();
                 let mut currency_converter = CurrencyConverter::new();
                 let mut accounts = TreeNode::new();
+                let mut files = Vec::new();
 
                 let transactions_stream =
                     cli.transactions().await?.map(|r| r.map(Item::Transaction));
-
                 let prices_stream = cli.prices().await?.map(|r| r.map(Item::Price));
+                let files_stream = cli.files().await?.map(|r| r.map(Item::File));
 
-                let mut combined = std::pin::pin!(transactions_stream.or(prices_stream));
+                let mut combined = std::pin::pin!(transactions_stream
+                    .fuse()
+                    .or(prices_stream.fuse())
+                    .or(files_stream.fuse()));
 
                 while let Some(result) = combined.next().await {
                     match result? {
@@ -77,12 +84,16 @@ impl FileState {
                         Item::Price(price) => {
                             currency_converter.record(price);
                         }
+                        Item::File(path) => {
+                            files.push(path);
+                        }
                     }
                 }
 
                 Ok(Self {
                     accounts,
                     transactions,
+                    files,
                     running_balance,
                     currency_converter,
                 })
@@ -91,11 +102,10 @@ impl FileState {
     }
 }
 
-impl FileState {}
-
 pub struct File {
     state: Entity<Result<FileState, Error>>,
     _tasks: Vec<Task<()>>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl File {
@@ -143,8 +153,22 @@ impl File {
         let cli = Cli::new(path);
 
         let mut tasks = vec![];
+        let mut subscriptions = vec![];
 
         let load_state = FileState::load(&cli, cx);
+
+        subscriptions.push(
+            // watch for changes to the loaded files
+            cx.observe_self(|this, cx| {
+                if let Ok(state) = this.state.read(cx) {
+                    // todo: watch for changes
+                    state
+                        .files
+                        .iter()
+                        .for_each(|path| println!("Loaded file: {:?}", path));
+                }
+            }),
+        );
 
         tasks.push(
             // load the initial settings
@@ -160,6 +184,7 @@ impl File {
 
         Self {
             state: cx.new(|_cx| Ok(FileState::default())),
+            _subscriptions: subscriptions,
             _tasks: tasks,
         }
     }
