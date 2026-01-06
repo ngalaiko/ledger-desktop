@@ -10,10 +10,8 @@ ledger = { path = "../ledger" }
 period = { path = "../period" }
 ui = { path = "../ui" }
 
-thiserror.workspace = true
 chrono.workspace = true
 fastnum.workspace = true
-futures-lite.workspace = true
 serde.workspace = true
 schemars.workspace = true
 gpui.workspace = true

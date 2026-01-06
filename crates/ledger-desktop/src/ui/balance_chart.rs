@@ -20,13 +20,11 @@ use gpui_component::{
     StyledExt,
 };
 use gpui_component::{ActiveTheme, PixelsExt};
-use ledger::Balance;
+use ledger::{Balance, CurrencyConverter};
 use state::AppState;
 
-use super::ledger_state::{CurrencyConverter, LedgerState};
-
-pub fn init(state: Entity<LedgerState>, cx: &mut App) -> Entity<BalanceChart> {
-    cx.new(|cx| BalanceChart::new(state, cx))
+pub fn init(cx: &mut App) -> Entity<BalanceChart> {
+    cx.new(|cx| BalanceChart::new(cx))
 }
 
 // Constants for chart layout
@@ -40,7 +38,6 @@ const MIN_TICK_SPACING: usize = 10;
 const Y_AXIS_LABEL_COUNT: usize = 5;
 
 pub struct BalanceChart {
-    state: Entity<LedgerState>,
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
@@ -48,7 +45,7 @@ pub struct BalanceChart {
 }
 
 impl BalanceChart {
-    fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         let colors = vec![
             cx.theme().colors.red,
             cx.theme().colors.green,
@@ -59,7 +56,6 @@ impl BalanceChart {
         ];
 
         Self {
-            state,
             plot_inner: PlotInner::new(colors.clone()),
             mouse_position: None,
             hovered_idx: None,
@@ -68,13 +64,12 @@ impl BalanceChart {
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let state = self.state.read(cx);
         let visible_accounts = AppState::get_selected_accounts(cx);
         let period = AppState::get_period(cx);
+        let running_balance = ledger::File::running_balance(cx).expect("todo");
 
         // Collect all dates where any visible account has transactions
-        let all_dates = state
-            .running_balance
+        let all_dates = running_balance
             .iter()
             .filter(|(account, _)| {
                 // Check if account is in visible accounts or a child of any visible account
@@ -104,16 +99,14 @@ impl BalanceChart {
         let mut plot_dates = Vec::new();
         let mut plot_balances = Vec::new();
 
-        let converter = &state.currency_converter;
+        let converter = ledger::File::currency_converter(cx).expect("todo");
         let mut current_date = filtered_start;
         while current_date <= max_date {
             // Aggregate balances from all visible accounts at this date
             let mut daily_balance = Balance::new();
 
             for visible_account in &visible_accounts {
-                let balance = state
-                    .running_balance
-                    .get_balance(visible_account, current_date);
+                let balance = running_balance.get_balance(visible_account, current_date);
                 let converted_balance = convert_balance(
                     converter,
                     &balance,

@@ -5,14 +5,12 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 fastnum.workspace = true
 gpui.workspace = true
-futures-lite.workspace = true
 serde.workspace = true
 
 async-process = "2.5"
-async-channel = "2.5"
-async-io = "2.6"
-pin-project-lite = "0.2"
+futures-lite = "2.6"

@@ -29,6 +29,7 @@ fn main() {
             cx.new(|cx| {
                 gpui_component::init(cx);
                 state::init(cx);
+                ledger::init::<&str>(None, cx);
 
                 Root::new(ui::init(window, cx), window, cx)
             })

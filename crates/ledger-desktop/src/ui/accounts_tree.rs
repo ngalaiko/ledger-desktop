@@ -10,37 +10,30 @@ use gpui_component::{
 use ledger::{Account, TreeNode};
 use state::AppState;
 
-use super::ledger_state::LedgerState;
 use ui::checkbox::{Checkbox, CheckboxState};
 
-pub fn init(state: Entity<LedgerState>, cx: &mut App) -> Entity<AccountsTreeView> {
-    cx.new(|cx| AccountsTreeView::new(state.clone(), cx))
+pub fn init(cx: &mut App) -> Entity<AccountsTreeView> {
+    cx.new(|cx| AccountsTreeView::new(cx))
 }
 
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
-    state: Entity<LedgerState>,
 }
 
 impl AccountsTreeView {
-    fn new(state: Entity<LedgerState>, cx: &mut Context<Self>) -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
-        // Rebuild tree items with accounts when the state changes
-        cx.observe(&state, |this, state, cx| {
-            let tree_items = build_items(&state.read(cx).accounts);
-            this.tree_state.update(cx, |tree_state, cx| {
-                tree_state.set_items(tree_items, cx);
-                cx.notify();
-            });
-            cx.notify();
-        })
-        .detach();
+        Self { tree_state }
+    }
 
-        Self {
-            tree_state,
-            state: state.clone(),
-        }
+    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
+        let accounts = ledger::File::accounts(cx).expect("todo");
+        let tree_items = build_items(accounts);
+        self.tree_state.update(cx, |tree_state, cx| {
+            tree_state.set_items(tree_items, cx);
+            cx.notify();
+        });
     }
 
     /// Calculate the checkbox state for a node based on its children
@@ -141,15 +134,14 @@ impl Render for AccountsTreeView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         tree(&self.tree_state, {
             let view = cx.entity();
-            let state_entity = self.state.clone();
             move |ix, entry, _selected, _window, cx| {
                 view.update(cx, |this, cx| {
                     let item = entry.item();
                     let account = Account::parse(&item.id);
 
                     // Get the tree node to calculate state
-                    let tree_node = &state_entity.read(cx).accounts.clone();
-                    let checkbox_state = this.calculate_state(tree_node, &account, cx);
+                    let tree_node = ledger::File::accounts(cx).expect("todo").clone();
+                    let checkbox_state = this.calculate_state(&tree_node, &account, cx);
 
                     let with_checkbox = div()
                         .flex()
@@ -162,14 +154,11 @@ impl Render for AccountsTreeView {
                                 .child({
                                     let item_id = item.id.clone();
                                     let view = view.clone();
-                                    let state_entity = state_entity.clone();
                                     Checkbox::new(item.id.clone())
                                         .state(checkbox_state)
                                         .on_click(move |_new_state, _window, cx| {
                                             let account = Account::parse(&item_id);
                                             view.update(cx, |this, cx| {
-                                                let tree_node =
-                                                    state_entity.read(cx).accounts.clone();
                                                 this.toggle_selection(&tree_node, account, cx);
                                             });
                                         })

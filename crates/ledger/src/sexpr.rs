@@ -182,7 +182,7 @@ impl Parser {
     }
 
     /// Call when input is done to check for errors
-    pub fn finish(mut self) -> Result<Vec<Value>, Error> {
+    pub fn finish(&mut self) -> Result<Vec<Value>, Error> {
         self.flush_atom()?;
         if matches!(self.state, State::InString { .. }) {
             return Err(Error::UnterminatedString);
@@ -190,7 +190,7 @@ impl Parser {
         if !self.stack.is_empty() {
             return Err(Error::UnclosedParens(self.stack.len()));
         }
-        Ok(self.output)
+        Ok(std::mem::take(&mut self.output))
     }
 }
 

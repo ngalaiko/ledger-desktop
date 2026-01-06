@@ -1,7 +1,6 @@
 mod accounts_tree;
 mod balance_chart;
 mod components;
-mod ledger_state;
 mod transactions_register;
 
 #[allow(clippy::wildcard_imports)]
@@ -17,7 +16,6 @@ use self::accounts_tree::AccountsTreeView;
 use self::balance_chart::BalanceChart;
 use self::components::commodity_selector::{commodity_selector, SelectCommodity};
 use self::components::period_selector::{period_selector, SelectPeriod};
-use self::ledger_state::LedgerState;
 use self::transactions_register::RegisterView;
 
 pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
@@ -28,16 +26,14 @@ pub struct Window {
     chart_state: Entity<BalanceChart>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
-    state: Entity<LedgerState>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Window {
     fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
-        let state = ledger_state::init(cx);
-        let accounts_tree = accounts_tree::init(state.clone(), cx);
-        let register_view = transactions_register::init(state.clone(), window, cx);
-        let chart_state = balance_chart::init(state.clone(), cx);
+        let accounts_tree = accounts_tree::init(cx);
+        let register_view = transactions_register::init(window, cx);
+        let chart_state = balance_chart::init(cx);
 
         let app_state = AppState::global(cx);
 
@@ -45,63 +41,53 @@ impl Window {
 
         subscriptions.push(
             // observe state changes and update views accordingly
-            {
-                let register_view = register_view.clone();
-                let chart_state = chart_state.clone();
-                cx.subscribe(
-                    &app_state,
-                    move |_window, _app_state, event, _cx| match event {
-                        state::StateEvent::CommodityChanged(_) => {
-                            register_view.update(_cx, |this, cx| {
-                                this.refresh_data(cx);
-                            });
-                            chart_state.update(_cx, |this, cx| {
-                                this.refresh_data(cx);
-                            });
-                        }
-                        state::StateEvent::SelectedAccountsChanged(_) => {
-                            register_view.update(_cx, |this, cx| {
-                                this.refresh_data(cx);
-                            });
-                            chart_state.update(_cx, |this, cx| {
-                                this.refresh_data(cx);
-                            });
-                        }
-                        state::StateEvent::PeriodChanged(_) => {
-                            chart_state.update(_cx, |this, cx| {
-                                this.refresh_data(cx);
-                            });
-                        }
-                    },
-                )
-            },
+            cx.subscribe(
+                &app_state,
+                move |this, _app_state, event, _cx| match event {
+                    state::StateEvent::CommodityChanged(_) => {
+                        this.register_view.update(_cx, |this, cx| {
+                            this.refresh_data(cx);
+                        });
+                        this.chart_state.update(_cx, |this, cx| {
+                            this.refresh_data(cx);
+                        });
+                    }
+                    state::StateEvent::SelectedAccountsChanged(_) => {
+                        this.register_view.update(_cx, |this, cx| {
+                            this.refresh_data(cx);
+                        });
+                        this.chart_state.update(_cx, |this, cx| {
+                            this.refresh_data(cx);
+                        });
+                    }
+                    state::StateEvent::PeriodChanged(_) => {
+                        this.chart_state.update(_cx, |this, cx| {
+                            this.refresh_data(cx);
+                        });
+                    }
+                },
+            ),
         );
 
-        cx.observe(&accounts_tree, |this, accounts_tree, cx| {
-            accounts_tree.update(cx, |_this, cx| {
+        subscriptions.push(
+            // observe ledger file changes and update views accordingly
+            cx.observe(&ledger::File::global(cx), |this, _file, cx| {
+                this.accounts_tree.update(cx, |this, cx| {
+                    this.refresh_data(cx);
+                });
                 this.register_view.update(cx, |this, cx| {
                     this.refresh_data(cx);
                 });
-
                 this.chart_state.update(cx, |this, cx| {
                     this.refresh_data(cx);
                 });
-            })
-        })
-        .detach();
-
-        cx.observe(&state, |this, _state, cx| {
-            this.register_view.update(cx, |this, cx| {
-                this.refresh_data(cx);
-            });
-        })
-        .detach();
+            }),
+        );
 
         Self {
             chart_state,
             accounts_tree,
             register_view,
-            state,
             _subscriptions: subscriptions,
         }
     }
@@ -109,9 +95,10 @@ impl Window {
 
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.read(cx);
         let period = AppState::get_period(cx);
-        let available_commodities = state.currency_converter.available_commodities();
+        let available_commodities = ledger::File::currency_converter(cx)
+            .expect("todo")
+            .available_commodities();
         let selected_commodity = AppState::get_commodity(cx);
 
         v_flex()

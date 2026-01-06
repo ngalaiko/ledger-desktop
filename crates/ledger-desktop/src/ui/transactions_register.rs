@@ -8,31 +8,27 @@ use gpui_component::{
 };
 use state::AppState;
 
-use ledger::{Account, Amount, Posting, Transaction};
+use ledger::{Account, Amount, CurrencyConverter, Posting, Transaction};
 
-use super::ledger_state::{CurrencyConverter, LedgerState};
-
-pub fn init(state: Entity<LedgerState>, window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
-    cx.new(|cx| RegisterView::new(state.clone(), window, cx))
+pub fn init(window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
+    cx.new(|cx| RegisterView::new(window, cx))
 }
 
 pub struct RegisterView {
-    state: Entity<LedgerState>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
 }
 
 impl RegisterView {
-    pub fn new(state: Entity<LedgerState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
 
-        Self { state, table_state }
+        Self { table_state }
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let state = self.state.read(cx);
-        let converter = &state.currency_converter;
-        let transactions = &state.transactions;
+        let converter = ledger::File::currency_converter(cx).expect("todo");
+        let transactions = ledger::File::transactions(cx).expect("todo");
         let visible_accounts = AppState::get_selected_accounts(cx);
         let visible_transactions = transactions
             .iter()

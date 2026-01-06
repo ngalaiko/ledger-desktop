@@ -3125,14 +3125,12 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 name = "ledger"
 version = "0.0.1"
 dependencies = [
- "async-channel 2.5.0",
- "async-io",
+ "anyhow",
  "async-process",
  "chrono",
  "fastnum",
  "futures-lite 2.6.1",
  "gpui",
- "pin-project-lite",
  "serde",
  "thiserror 2.0.17",
 ]
@@ -3143,7 +3141,6 @@ version = "0.0.1"
 dependencies = [
  "chrono",
  "fastnum",
- "futures-lite 2.6.1",
  "gpui",
  "gpui-component",
  "gpui-component-assets",
@@ -3152,7 +3149,6 @@ dependencies = [
  "schemars",
  "serde",
  "state",
- "thiserror 2.0.17",
  "ui",
 ]
 
