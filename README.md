@@ -7,3 +7,9 @@ first goal is to implement a desktop app for myself to simplify data entry for m
 long term goal is to define conventions for ledger data and build more features around it like budgeting, stocks tracking, etc.
 
 powered by [gpui](https://www.gpui.rs/) and [gpui-component](https://longbridge.github.io/gpui-component/).
+
+## references
+
+- [sure](https://app.sure.am/)
+- [paisa](https://demo.paisa.fyi/)
+- [fava](https://fava.pythonanywhere.com/huge-example-file/income_statement/)
