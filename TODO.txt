@@ -1,4 +1,3 @@
-- store all the state in a file: selected accounts, date range, filters, etc.
 - listen for source file changes and reload transactions
 - show account balance ?
 - balance chart
