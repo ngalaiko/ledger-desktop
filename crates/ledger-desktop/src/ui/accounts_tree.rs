@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
 use gpui_component::{
@@ -29,7 +31,8 @@ impl AccountsTreeView {
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
         let accounts = ledger::File::accounts(cx).expect("todo");
-        let tree_items = build_items(accounts);
+        let expanded_accounts = AppState::get_expanded_accounts(cx);
+        let tree_items = build_items(accounts, &expanded_accounts);
         self.tree_state.update(cx, |tree_state, cx| {
             tree_state.set_items(tree_items, cx);
             cx.notify();
@@ -111,15 +114,15 @@ impl AccountsTreeView {
     }
 }
 
-fn build_items(node: &TreeNode) -> Vec<TreeItem> {
+fn build_items(node: &TreeNode, expanded_accounts: &HashSet<Account>) -> Vec<TreeItem> {
     let mut items = Vec::new();
 
     for child in &node.children {
         let mut item = TreeItem::new(child.account.to_string(), child.account.name().to_string());
 
         if !child.children.is_empty() {
-            item = item.expanded(false);
-            for sub_child in build_items(child) {
+            item = item.expanded(expanded_accounts.contains(&child.account));
+            for sub_child in build_items(child, expanded_accounts) {
                 item = item.child(sub_child);
             }
         }
@@ -134,7 +137,7 @@ impl Render for AccountsTreeView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         tree(&self.tree_state, {
             let view = cx.entity();
-            move |ix, entry, _selected, _window, cx| {
+            move |_, entry, _selected, _window, cx| {
                 view.update(cx, |this, cx| {
                     let item = entry.item();
                     let account = Account::parse(&item.id);
@@ -187,9 +190,19 @@ impl Render for AccountsTreeView {
                             .child(with_checkbox)
                     };
 
-                    let is_any_selected = !matches!(checkbox_state, CheckboxState::Unchecked);
-                    ListItem::new(ix)
-                        .selected(is_any_selected)
+                    ListItem::new(item.label.clone())
+                        .on_click(cx.listener({
+                            let account = account.clone();
+                            move |_this, _event, _window, cx| {
+                                let mut expanded_accounts = AppState::get_expanded_accounts(cx);
+                                if expanded_accounts.contains(&account) {
+                                    expanded_accounts.remove(&account);
+                                } else {
+                                    expanded_accounts.insert(account.clone());
+                                }
+                                AppState::update_expanded_accounts(expanded_accounts, cx);
+                            }
+                        }))
                         .pl(px(16.) * entry.depth() + px(12.))
                         .child(with_icon)
                 })

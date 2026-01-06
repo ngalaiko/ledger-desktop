@@ -65,6 +65,7 @@ impl Window {
                             this.refresh_data(cx);
                         });
                     }
+                    state::StateEvent::ExpandedAccountsChanged(_) => {}
                 },
             ),
         );

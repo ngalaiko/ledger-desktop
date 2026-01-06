@@ -13,6 +13,7 @@ pub enum StateEvent {
     CommodityChanged(Option<String>),
     SelectedAccountsChanged(HashSet<Account>),
     PeriodChanged(Period),
+    ExpandedAccountsChanged(HashSet<Account>),
 }
 
 impl EventEmitter<StateEvent> for AppState {}
@@ -42,6 +43,7 @@ macro_rules! setting_accessors {
 setting_accessors! {
     pub commodity: Option<String>,
     pub selected_accounts: HashSet<Account>,
+    pub expanded_accounts: HashSet<Account>,
     pub period: Period,
 }
 
@@ -52,6 +54,7 @@ pub struct State {
     pub version: String,
     pub commodity: Option<String>,
     pub selected_accounts: HashSet<Account>,
+    pub expanded_accounts: HashSet<Account>,
     pub period: Period,
 }
 
@@ -61,6 +64,7 @@ impl Default for State {
             version: CURRENT_VERSION.to_string(),
             commodity: None,
             selected_accounts: HashSet::new(),
+            expanded_accounts: HashSet::new(),
             period: Period::D30,
         }
     }
