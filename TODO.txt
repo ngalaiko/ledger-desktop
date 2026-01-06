@@ -1,7 +1,7 @@
 - listen for source file changes and reload transactions
-- show account balance ?
+- handle ledger errors
+- show account balance
 - balance chart
 	- add legend for commodities to balance chart ?
 	- configurable account chart table resolution ?
-- handle ledger format errors
-- write / update
+- add / update transactions
