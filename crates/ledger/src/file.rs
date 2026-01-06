@@ -56,10 +56,8 @@ impl FileState {
                 let prices_stream = cli.prices().await?.map(|r| r.map(Item::Price));
                 let files_stream = cli.files().await?.map(|r| r.map(Item::File));
 
-                let mut combined = std::pin::pin!(transactions_stream
-                    .fuse()
-                    .or(prices_stream.fuse())
-                    .or(files_stream.fuse()));
+                let mut combined =
+                    std::pin::pin!(transactions_stream.chain(prices_stream).chain(files_stream));
 
                 while let Some(result) = combined.next().await {
                     match result? {
