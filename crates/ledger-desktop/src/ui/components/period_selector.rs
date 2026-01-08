@@ -4,7 +4,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     menu::DropdownMenu,
 };
-use period::Period;
+use state::period::Period;
 
 #[derive(Clone, PartialEq, serde::Deserialize, schemars::JsonSchema, Action)]
 #[action(namespace = balance_chart)]
