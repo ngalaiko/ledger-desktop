@@ -17,6 +17,7 @@ use self::components::commodity_selector::{commodity_selector, SelectCommodity};
 use self::components::period_selector::{period_selector, SelectPeriod};
 use self::total_assets_chart::TotalAssetsChart;
 use self::transactions_register::RegisterView;
+use crate::data::currency_converter::CurrencyConverter;
 
 pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
     cx.new(|cx| Window::new(window, cx))
