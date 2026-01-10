@@ -46,7 +46,7 @@ impl CurrencyConverter {
         let mut history: HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>> =
             HashMap::new();
 
-        let mut record = |price: Price| {
+        let mut record = |price: &Price| {
             {
                 let to_map = history
                     .entry(price.commodity.clone())
@@ -59,10 +59,10 @@ impl CurrencyConverter {
 
             {
                 let from_map = history
-                    .entry(price.value.commodity)
+                    .entry(price.value.commodity.clone())
                     .or_insert_with(HashMap::new);
                 let date_map = from_map
-                    .entry(price.commodity)
+                    .entry(price.commodity.clone())
                     .or_insert_with(BTreeMap::new);
                 date_map.insert(price.date, D128::ONE / price.value.value);
             }
@@ -80,7 +80,7 @@ impl CurrencyConverter {
             for transaction in transactions {
                 for posting in &transaction.postings {
                     if let Some(cost) = &posting.amount.cost {
-                        record(Price {
+                        record(&Price {
                             date: transaction.date,
                             commodity: posting.amount.value.commodity.clone(),
                             value: cost.clone(),

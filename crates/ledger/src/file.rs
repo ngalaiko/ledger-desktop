@@ -97,18 +97,18 @@ impl File {
         cx.set_global(GlobalFile(file));
     }
 
-    pub fn prices(cx: &App) -> Result<Vec<Price>, Error> {
+    pub fn prices(cx: &App) -> Result<&[Price], Error> {
         let state = Self::global(cx).read(cx).state.read(cx);
         match state {
-            Ok(state) => Ok(state.prices.clone()),
+            Ok(state) => Ok(&state.prices),
             Err(e) => Err(Error::msg(e.to_string())),
         }
     }
 
-    pub fn transactions(cx: &App) -> Result<Vec<Transaction>, Error> {
+    pub fn transactions(cx: &App) -> Result<&[Transaction], Error> {
         let state = Self::global(cx).read(cx).state.read(cx);
         match state {
-            Ok(state) => Ok(state.transactions.clone()),
+            Ok(state) => Ok(&state.transactions),
             Err(e) => Err(Error::msg(e.to_string())),
         }
     }

@@ -53,7 +53,7 @@ impl RunningBalance {
     }
 
     fn calculate(
-        transactions: Vec<ledger::Transaction>,
+        transactions: &[ledger::Transaction],
     ) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
         let mut data: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
         for transaction in transactions.iter() {
