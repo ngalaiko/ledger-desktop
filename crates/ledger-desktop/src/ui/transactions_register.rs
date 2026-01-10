@@ -8,7 +8,9 @@ use gpui_component::{
 };
 use state::AppState;
 
-use ledger::{Account, Amount, CurrencyConverter, Posting, Transaction};
+use ledger::{Account, Amount, Posting, Transaction};
+
+use crate::data::currency_converter::CurrencyConverter;
 
 pub fn init(window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
     cx.new(|cx| RegisterView::new(window, cx))
@@ -27,7 +29,7 @@ impl RegisterView {
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let converter = ledger::File::currency_converter(cx).expect("todo");
+        let converter = CurrencyConverter::global(cx).read(cx);
         let transactions = ledger::File::transactions(cx).expect("todo");
         let visible_accounts = AppState::get_selected_accounts(cx);
         let visible_transactions = transactions
@@ -35,7 +37,7 @@ impl RegisterView {
             .filter_map(|transaction| {
                 filter_map_visible_transaction(transaction, &visible_accounts)
             })
-            .map(|tx| convert_transaction(converter, &tx, AppState::get_commodity(cx)))
+            .map(|tx| convert_transaction(&converter, &tx, AppState::get_commodity(cx)))
             .collect::<Vec<_>>();
         self.table_state.update(cx, |table_state, cx| {
             let delegate = table_state.delegate_mut();

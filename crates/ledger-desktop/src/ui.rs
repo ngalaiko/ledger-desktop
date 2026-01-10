@@ -91,8 +91,8 @@ impl Window {
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let period = AppState::get_period(cx);
-        let available_commodities = ledger::File::currency_converter(cx)
-            .expect("todo")
+        let available_commodities = CurrencyConverter::global(cx)
+            .read(cx)
             .available_commodities();
         let selected_commodity = AppState::get_commodity(cx);
 

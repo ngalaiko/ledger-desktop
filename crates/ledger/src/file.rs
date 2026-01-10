@@ -2,7 +2,7 @@ use anyhow::Error;
 use futures_lite::StreamExt;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
 
-use crate::{cli::Cli, converter::CurrencyConverter, Price, Transaction, TreeNode};
+use crate::{cli::Cli, Price, Transaction, TreeNode};
 
 pub fn init<P: AsRef<std::path::Path>>(path: Option<P>, cx: &mut App) {
     File::set_global(cx.new(|cx| File::new(path, cx)), cx);
@@ -15,8 +15,8 @@ impl Global for GlobalFile {}
 struct FileState {
     accounts: TreeNode,
     transactions: Vec<Transaction>,
+    prices: Vec<Price>,
     files: Vec<std::path::PathBuf>,
-    currency_converter: CurrencyConverter,
 }
 
 impl Default for FileState {
@@ -24,8 +24,8 @@ impl Default for FileState {
         Self {
             accounts: TreeNode::new(),
             transactions: Vec::new(),
+            prices: Vec::new(),
             files: Vec::new(),
-            currency_converter: CurrencyConverter::new(),
         }
     }
 }
@@ -42,7 +42,7 @@ impl FileState {
             let cli = cli.clone();
             async move {
                 let mut transactions = Vec::new();
-                let mut currency_converter = CurrencyConverter::new();
+                let mut prices = Vec::new();
                 let mut accounts = TreeNode::new();
                 let mut files = Vec::new();
 
@@ -59,18 +59,11 @@ impl FileState {
                         Item::Transaction(transaction) => {
                             for posting in transaction.postings.iter() {
                                 accounts.add_account(&posting.account);
-                                if let Some(cost) = &posting.amount.cost {
-                                    currency_converter.record(Price {
-                                        date: transaction.date,
-                                        commodity: posting.amount.value.commodity.clone(),
-                                        value: cost.clone(),
-                                    });
-                                }
                             }
                             transactions.push(transaction);
                         }
                         Item::Price(price) => {
-                            currency_converter.record(price);
+                            prices.push(price);
                         }
                         Item::File(path) => {
                             files.push(path);
@@ -81,8 +74,8 @@ impl FileState {
                 Ok(Self {
                     accounts,
                     transactions,
+                    prices,
                     files,
-                    currency_converter,
                 })
             }
         })
@@ -104,10 +97,10 @@ impl File {
         cx.set_global(GlobalFile(file));
     }
 
-    pub fn currency_converter(cx: &App) -> Result<&CurrencyConverter, Error> {
+    pub fn prices(cx: &App) -> Result<Vec<Price>, Error> {
         let state = Self::global(cx).read(cx).state.read(cx);
         match state {
-            Ok(state) => Ok(&state.currency_converter),
+            Ok(state) => Ok(state.prices.clone()),
             Err(e) => Err(Error::msg(e.to_string())),
         }
     }

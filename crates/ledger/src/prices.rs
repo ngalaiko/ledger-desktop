@@ -10,7 +10,7 @@ pub enum ParsePriceError {
     InvalidFormat,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Price {
     pub date: chrono::NaiveDate,
     pub commodity: String,

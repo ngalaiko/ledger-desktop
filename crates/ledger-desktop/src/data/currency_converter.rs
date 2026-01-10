@@ -1,0 +1,121 @@
+use std::collections::{BTreeMap, HashMap};
+
+use fastnum::D128;
+use gpui::{App, AppContext, Context, Entity, Global, Subscription};
+use ledger::{CurrencyAmount, Price};
+
+pub fn init(cx: &mut App) {
+    CurrencyConverter::set_global(cx.new(CurrencyConverter::new), cx);
+}
+
+struct GlobalCurrencyConverter(Entity<CurrencyConverter>);
+
+impl Global for GlobalCurrencyConverter {}
+
+pub struct CurrencyConverter {
+    // From commodity -> to commodity -> date -> price
+    history: HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl CurrencyConverter {
+    pub fn global(cx: &App) -> Entity<CurrencyConverter> {
+        cx.global::<GlobalCurrencyConverter>().0.clone()
+    }
+
+    pub(crate) fn set_global(currency_converter: Entity<CurrencyConverter>, cx: &mut App) {
+        cx.set_global(GlobalCurrencyConverter(currency_converter));
+    }
+
+    fn new(cx: &mut Context<Self>) -> Self {
+        let mut subscriptions = vec![];
+        let ledger_file = ledger::File::global(cx);
+
+        subscriptions.push(cx.observe(&ledger_file, |this, _ledger_file, cx| {
+            this.history = Self::calculate(cx);
+            cx.notify();
+        }));
+
+        Self {
+            history: HashMap::new(),
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn calculate(cx: &App) -> HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>> {
+        let mut history: HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>> =
+            HashMap::new();
+
+        let mut record = |price: Price| {
+            {
+                let to_map = history
+                    .entry(price.commodity.clone())
+                    .or_insert_with(HashMap::new);
+                let date_map = to_map
+                    .entry(price.value.commodity.clone())
+                    .or_insert_with(BTreeMap::new);
+                date_map.insert(price.date, price.value.value);
+            }
+
+            {
+                let from_map = history
+                    .entry(price.value.commodity)
+                    .or_insert_with(HashMap::new);
+                let date_map = from_map
+                    .entry(price.commodity)
+                    .or_insert_with(BTreeMap::new);
+                date_map.insert(price.date, D128::ONE / price.value.value);
+            }
+        };
+
+        // Record prices from price directives
+        if let Ok(prices) = ledger::File::prices(cx) {
+            for price in prices {
+                record(price);
+            }
+        }
+
+        // Record prices from transaction costs
+        if let Ok(transactions) = ledger::File::transactions(cx) {
+            for transaction in transactions {
+                for posting in &transaction.postings {
+                    if let Some(cost) = &posting.amount.cost {
+                        record(Price {
+                            date: transaction.date,
+                            commodity: posting.amount.value.commodity.clone(),
+                            value: cost.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        history
+    }
+
+    pub fn convert(
+        &self,
+        amount: &CurrencyAmount,
+        target_commodity: &str,
+        at_date: chrono::NaiveDate,
+    ) -> Option<CurrencyAmount> {
+        if amount.commodity == target_commodity {
+            return Some(amount.clone());
+        }
+
+        let to_map = self.history.get(&amount.commodity)?;
+        let date_map = to_map.get(target_commodity)?;
+        let (_, price) = date_map.range(..=at_date).next_back()?;
+
+        Some(CurrencyAmount {
+            value: amount.value * (*price),
+            commodity: target_commodity.to_string(),
+        })
+    }
+
+    pub fn available_commodities(&self) -> Vec<String> {
+        let mut commodities: Vec<String> = self.history.keys().cloned().collect();
+        commodities.sort();
+        commodities
+    }
+}

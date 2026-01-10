@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
-use ledger::{Balance, CurrencyConverter};
+use ledger::Balance;
+
+use crate::data::currency_converter::CurrencyConverter;
 use state::AppState;
 
 use crate::data::total_assets::{self, TotalAssets};
@@ -55,7 +57,7 @@ impl TotalAssetsChart {
         // Apply period filter: use max of period_start and min_date
         let filtered_start = period_start.max(min_date);
 
-        let converter = ledger::File::currency_converter(cx).expect("todo");
+        let converter = CurrencyConverter::global(cx).read(cx);
         let target_commodity = AppState::get_commodity(cx);
 
         let mut plot_dates = Vec::new();
@@ -73,7 +75,7 @@ impl TotalAssetsChart {
                 .unwrap_or_else(Balance::new);
 
             let converted_balance = convert_balance(
-                converter,
+                &converter,
                 &balance,
                 target_commodity.as_deref(),
                 current_date,
