@@ -1,7 +1,11 @@
+mod data;
 mod ui;
 
-#[allow(clippy::wildcard_imports)]
-use gpui::*;
+use gpui::prelude::*;
+use gpui::{
+    point, px, size, Application, Bounds, TitlebarOptions, WindowBackgroundAppearance,
+    WindowBounds, WindowDecorations, WindowKind, WindowOptions,
+};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
 
@@ -30,6 +34,7 @@ fn main() {
                 gpui_component::init(cx);
                 state::init(cx);
                 ledger::init::<&str>(None, cx);
+                data::init(cx);
 
                 Root::new(ui::init(window, cx), window, cx)
             })

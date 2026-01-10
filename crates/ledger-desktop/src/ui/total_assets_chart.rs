@@ -1,50 +1,48 @@
 use std::collections::HashMap;
 
-use gpui::prelude::*;
 use gpui::{div, App, Entity, Window};
+use gpui::{prelude::*, Subscription};
 
 use ledger::{Balance, CurrencyConverter};
 use state::AppState;
 
+use crate::data::total_assets::{self, TotalAssets};
 use crate::ui::components::line_chart::LineChart;
 
-pub fn init(cx: &mut App) -> Entity<BalanceChart> {
-    cx.new(|cx| BalanceChart::new(cx))
+pub fn init(cx: &mut App) -> Entity<TotalAssetsChart> {
+    cx.new(|cx| TotalAssetsChart::new(cx))
 }
 
-pub struct BalanceChart {
+pub struct TotalAssetsChart {
     chart: Entity<LineChart>,
+    _subscriptions: Vec<Subscription>,
 }
 
-impl BalanceChart {
+impl TotalAssetsChart {
     fn new(cx: &mut Context<Self>) -> Self {
+        let total_assets = TotalAssets::global(cx);
+        let mut subscriptions = vec![];
+        subscriptions.push(
+            // observe total assets changes and refresh chart data
+            cx.observe(&total_assets, |this, _total_assets, cx| {
+                this.refresh_data(cx);
+            }),
+        );
         Self {
             chart: cx.new(|cx| LineChart::new(cx)),
+            _subscriptions: subscriptions,
         }
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let visible_accounts = AppState::get_selected_accounts(cx);
         let period = AppState::get_period(cx);
-        let running_balance = ledger::File::running_balance(cx).expect("todo");
+        let total_assets = total_assets::TotalAssets::global(cx);
+        let total_assets = total_assets.read(cx);
 
-        // Collect all dates where any visible account has transactions
-        let all_dates = running_balance
-            .iter()
-            .filter(|(account, _)| {
-                // Check if account is in visible accounts or a child of any visible account
-                visible_accounts
-                    .iter()
-                    .any(|visible_account| visible_account.is_parent_of(account))
-            })
-            .flat_map(|(_, date_balances)| date_balances.keys())
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>();
+        // Collect all dates from total assets data
+        let all_dates: Vec<chrono::NaiveDate> = total_assets.iter().map(|(d, _)| *d).collect();
 
         if all_dates.is_empty() {
-            self.chart.update(cx, |chart, cx| {
-                chart.refresh_data(&[], HashMap::new(), cx);
-            });
             return;
         }
 
@@ -57,28 +55,32 @@ impl BalanceChart {
         // Apply period filter: use max of period_start and min_date
         let filtered_start = period_start.max(min_date);
 
+        let converter = ledger::File::currency_converter(cx).expect("todo");
+        let target_commodity = AppState::get_commodity(cx);
+
         let mut plot_dates = Vec::new();
         let mut plot_balances = Vec::new();
 
-        let converter = ledger::File::currency_converter(cx).expect("todo");
+        // Iterate through each day in the filtered range
         let mut current_date = filtered_start;
         while current_date <= max_date {
-            // Aggregate balances from all visible accounts at this date
-            let mut daily_balance = Balance::new();
+            // Find the balance for this date (or the most recent one before it)
+            let balance = total_assets
+                .iter()
+                .filter(|(d, _)| **d <= current_date)
+                .last()
+                .map(|(_, b)| b.clone())
+                .unwrap_or_else(Balance::new);
 
-            for visible_account in &visible_accounts {
-                let balance = running_balance.get_balance(visible_account, current_date);
-                let converted_balance = convert_balance(
-                    converter,
-                    &balance,
-                    AppState::get_commodity(cx).as_deref(),
-                    current_date,
-                );
-                daily_balance.add(&converted_balance);
-            }
+            let converted_balance = convert_balance(
+                converter,
+                &balance,
+                target_commodity.as_deref(),
+                current_date,
+            );
 
             plot_dates.push(current_date);
-            plot_balances.push(daily_balance);
+            plot_balances.push(converted_balance);
 
             current_date += chrono::Duration::days(1);
         }
@@ -140,7 +142,7 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
     values
 }
 
-impl Render for BalanceChart {
+impl Render for TotalAssetsChart {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().size_full().child(self.chart.clone())
     }

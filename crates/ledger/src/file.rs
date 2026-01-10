@@ -2,9 +2,7 @@ use anyhow::Error;
 use futures_lite::StreamExt;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
 
-use crate::{
-    balance::RunningBalance, cli::Cli, converter::CurrencyConverter, Price, Transaction, TreeNode,
-};
+use crate::{cli::Cli, converter::CurrencyConverter, Price, Transaction, TreeNode};
 
 pub fn init<P: AsRef<std::path::Path>>(path: Option<P>, cx: &mut App) {
     File::set_global(cx.new(|cx| File::new(path, cx)), cx);
@@ -18,7 +16,6 @@ struct FileState {
     accounts: TreeNode,
     transactions: Vec<Transaction>,
     files: Vec<std::path::PathBuf>,
-    running_balance: RunningBalance,
     currency_converter: CurrencyConverter,
 }
 
@@ -28,7 +25,6 @@ impl Default for FileState {
             accounts: TreeNode::new(),
             transactions: Vec::new(),
             files: Vec::new(),
-            running_balance: RunningBalance::new(),
             currency_converter: CurrencyConverter::new(),
         }
     }
@@ -46,7 +42,6 @@ impl FileState {
             let cli = cli.clone();
             async move {
                 let mut transactions = Vec::new();
-                let mut running_balance = RunningBalance::new();
                 let mut currency_converter = CurrencyConverter::new();
                 let mut accounts = TreeNode::new();
                 let mut files = Vec::new();
@@ -64,11 +59,6 @@ impl FileState {
                         Item::Transaction(transaction) => {
                             for posting in transaction.postings.iter() {
                                 accounts.add_account(&posting.account);
-                                running_balance.record_diff(
-                                    transaction.date,
-                                    &posting.account,
-                                    &posting.amount.value,
-                                );
                                 if let Some(cost) = &posting.amount.cost {
                                     currency_converter.record(Price {
                                         date: transaction.date,
@@ -92,7 +82,6 @@ impl FileState {
                     accounts,
                     transactions,
                     files,
-                    running_balance,
                     currency_converter,
                 })
             }
@@ -115,14 +104,6 @@ impl File {
         cx.set_global(GlobalFile(file));
     }
 
-    pub fn running_balance(cx: &App) -> Result<RunningBalance, Error> {
-        let state = Self::global(cx).read(cx).state.read(cx);
-        match state {
-            Ok(state) => Ok(state.running_balance.clone()),
-            Err(e) => Err(Error::msg(e.to_string())),
-        }
-    }
-
     pub fn currency_converter(cx: &App) -> Result<&CurrencyConverter, Error> {
         let state = Self::global(cx).read(cx).state.read(cx);
         match state {
@@ -131,10 +112,10 @@ impl File {
         }
     }
 
-    pub fn transactions(cx: &App) -> Result<Vec<&Transaction>, Error> {
+    pub fn transactions(cx: &App) -> Result<Vec<Transaction>, Error> {
         let state = Self::global(cx).read(cx).state.read(cx);
         match state {
-            Ok(state) => Ok(state.transactions.iter().collect()),
+            Ok(state) => Ok(state.transactions.clone()),
             Err(e) => Err(Error::msg(e.to_string())),
         }
     }

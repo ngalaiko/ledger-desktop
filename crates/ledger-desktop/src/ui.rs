@@ -1,6 +1,6 @@
 mod accounts_tree;
-mod balance_chart;
 mod components;
+mod total_assets_chart;
 mod transactions_register;
 
 #[allow(clippy::wildcard_imports)]
@@ -13,9 +13,9 @@ use gpui_component::{
 use state::AppState;
 
 use self::accounts_tree::AccountsTreeView;
-use self::balance_chart::BalanceChart;
 use self::components::commodity_selector::{commodity_selector, SelectCommodity};
 use self::components::period_selector::{period_selector, SelectPeriod};
+use self::total_assets_chart::TotalAssetsChart;
 use self::transactions_register::RegisterView;
 
 pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
@@ -23,7 +23,7 @@ pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
 }
 
 pub struct Window {
-    chart_state: Entity<BalanceChart>,
+    total_assets_chart: Entity<TotalAssetsChart>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
     _subscriptions: Vec<Subscription>,
@@ -33,7 +33,7 @@ impl Window {
     fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
         let accounts_tree = accounts_tree::init(cx);
         let register_view = transactions_register::init(window, cx);
-        let chart_state = balance_chart::init(cx);
+        let total_assets_chart = total_assets_chart::init(cx);
 
         let app_state = AppState::global(cx);
 
@@ -48,7 +48,7 @@ impl Window {
                         this.register_view.update(_cx, |this, cx| {
                             this.refresh_data(cx);
                         });
-                        this.chart_state.update(_cx, |this, cx| {
+                        this.total_assets_chart.update(_cx, |this, cx| {
                             this.refresh_data(cx);
                         });
                     }
@@ -56,12 +56,9 @@ impl Window {
                         this.register_view.update(_cx, |this, cx| {
                             this.refresh_data(cx);
                         });
-                        this.chart_state.update(_cx, |this, cx| {
-                            this.refresh_data(cx);
-                        });
                     }
                     state::StateEvent::PeriodChanged(_) => {
-                        this.chart_state.update(_cx, |this, cx| {
+                        this.total_assets_chart.update(_cx, |this, cx| {
                             this.refresh_data(cx);
                         });
                     }
@@ -79,14 +76,11 @@ impl Window {
                 this.register_view.update(cx, |this, cx| {
                     this.refresh_data(cx);
                 });
-                this.chart_state.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
             }),
         );
 
         Self {
-            chart_state,
+            total_assets_chart,
             accounts_tree,
             register_view,
             _subscriptions: subscriptions,
@@ -141,7 +135,12 @@ impl Render for Window {
                                                     ),
                                             ),
                                     )
-                                    .child(div().size_full().p_2().child(self.chart_state.clone()))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .p_2()
+                                            .child(self.total_assets_chart.clone()),
+                                    )
                                     .child(self.register_view.clone()),
                             ),
                         ),

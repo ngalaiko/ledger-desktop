@@ -8,6 +8,14 @@ use super::amounts::CurrencyAmount;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Account {
     pub segments: Vec<String>,
+    pub type_of: AccountType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AccountType {
+    Unknown,
+    Assets,
+    Liabilities,
 }
 
 impl serde::Serialize for Account {
@@ -49,12 +57,22 @@ impl Account {
     }
 
     pub fn from_segments(segments: Vec<String>) -> Self {
-        Account { segments }
+        let type_of = if segments.is_empty() {
+            AccountType::Unknown
+        } else {
+            match segments[0].to_lowercase().as_str() {
+                "assets" => AccountType::Assets,
+                "liabilities" => AccountType::Liabilities,
+                _ => AccountType::Unknown,
+            }
+        };
+        Account { segments, type_of }
     }
 
     pub fn empty() -> Self {
         Account {
             segments: Vec::new(),
+            type_of: AccountType::Unknown,
         }
     }
 
@@ -65,7 +83,7 @@ impl Account {
             .map(|s| s.to_string())
             .collect();
 
-        Account { segments }
+        Self::from_segments(segments)
     }
 
     pub fn name(&self) -> &str {
@@ -77,6 +95,7 @@ impl Account {
         if self.segments.len() > 1 {
             Some(Account {
                 segments: self.segments[..self.segments.len() - 1].to_vec(),
+                type_of: self.type_of.clone(),
             })
         } else {
             None
@@ -121,6 +140,12 @@ impl Balance {
         }
     }
 
+    pub fn subtract(&mut self, other: &Balance) {
+        for amount in other.iter() {
+            self.subtract_amount(amount.clone());
+        }
+    }
+
     pub fn add_amount(&mut self, amount: CurrencyAmount) {
         let entry = self
             .by_commodity
@@ -130,6 +155,17 @@ impl Balance {
                 commodity: amount.commodity.clone(),
             });
         entry.value += amount.value;
+    }
+
+    pub fn subtract_amount(&mut self, amount: CurrencyAmount) {
+        let entry = self
+            .by_commodity
+            .entry(amount.commodity.clone())
+            .or_insert(CurrencyAmount {
+                value: D128::ZERO,
+                commodity: amount.commodity.clone(),
+            });
+        entry.value -= amount.value;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &CurrencyAmount> + '_ {
