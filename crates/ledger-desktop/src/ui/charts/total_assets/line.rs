@@ -11,16 +11,16 @@ use state::AppState;
 use crate::data::total_assets::{self, TotalAssets};
 use crate::ui::components::line_chart::LineChart;
 
-pub fn init(cx: &mut App) -> Entity<TotalAssetsChart> {
-    cx.new(|cx| TotalAssetsChart::new(cx))
+pub fn init(cx: &mut App) -> Entity<Chart> {
+    cx.new(|cx| Chart::new(cx))
 }
 
-pub struct TotalAssetsChart {
+pub struct Chart {
     chart: Entity<LineChart>,
     _subscriptions: Vec<Subscription>,
 }
 
-impl TotalAssetsChart {
+impl Chart {
     fn new(cx: &mut Context<Self>) -> Self {
         let total_assets = TotalAssets::global(cx);
         let mut subscriptions = vec![];
@@ -129,7 +129,7 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
     values
 }
 
-impl Render for TotalAssetsChart {
+impl Render for Chart {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().size_full().child(self.chart.clone())
     }

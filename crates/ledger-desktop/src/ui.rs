@@ -1,6 +1,6 @@
 mod accounts_tree;
+mod charts;
 mod components;
-mod total_assets_chart;
 mod transactions_register;
 
 #[allow(clippy::wildcard_imports)]
@@ -13,7 +13,6 @@ use gpui_component::{
 use state::AppState;
 
 use self::components::{commodity_selector, period_selector};
-use self::total_assets_chart::TotalAssetsChart;
 use self::transactions_register::RegisterView;
 use self::{accounts_tree::AccountsTreeView, components::period_toggle};
 
@@ -22,7 +21,7 @@ pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
 }
 
 pub struct Window {
-    total_assets_chart: Entity<TotalAssetsChart>,
+    total_assets_chart: Entity<charts::total_assets::line::Chart>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
     period_selector: Entity<period_selector::PeriodSelector>,
@@ -35,7 +34,7 @@ impl Window {
     fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
         let accounts_tree = accounts_tree::init(cx);
         let register_view = transactions_register::init(window, cx);
-        let total_assets_chart = total_assets_chart::init(cx);
+        let total_assets_chart = charts::total_assets::line::init(cx);
 
         let mut subscriptions = vec![];
         subscriptions.push(
