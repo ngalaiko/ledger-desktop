@@ -3,22 +3,14 @@ pub mod period;
 use std::collections::HashSet;
 
 use anyhow::{anyhow, Error};
-use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Subscription, Task};
+use chrono::Datelike;
+use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
 use ledger::Account;
 use period::Period;
 
 pub fn init(cx: &mut App) {
     AppState::set_global(cx.new(AppState::new), cx);
 }
-
-pub enum StateEvent {
-    CommodityChanged(Option<String>),
-    SelectedAccountsChanged(HashSet<Account>),
-    PeriodChanged(Period),
-    ExpandedAccountsChanged(HashSet<Account>),
-}
-
-impl EventEmitter<StateEvent> for AppState {}
 
 macro_rules! setting_accessors {
     ($(pub $field:ident: $type:ty),* $(,)?) => {
@@ -32,7 +24,6 @@ macro_rules! setting_accessors {
                     pub fn [<update_ $field>](value: $type, cx: &mut App) {
                         Self::global(cx).update(cx, |this, cx| {
                             this.state_values.$field = value;
-                            cx.emit(StateEvent::[<$field:camel Changed>](this.state_values.$field.clone()));
                             cx.notify();
                         });
                     }
@@ -47,6 +38,7 @@ setting_accessors! {
     pub selected_accounts: HashSet<Account>,
     pub expanded_accounts: HashSet<Account>,
     pub period: Period,
+    pub period_idx: usize,
 }
 
 static CURRENT_VERSION: &str = "1.0";
@@ -58,6 +50,8 @@ pub struct State {
     pub selected_accounts: HashSet<Account>,
     pub expanded_accounts: HashSet<Account>,
     pub period: Period,
+    // index of the current period. 0 = current, 1 = previous, 2 = two periods ago, etc.
+    pub period_idx: usize,
 }
 
 impl Default for State {
@@ -67,7 +61,8 @@ impl Default for State {
             commodity: None,
             selected_accounts: HashSet::new(),
             expanded_accounts: HashSet::new(),
-            period: Period::D30,
+            period: Period::Month,
+            period_idx: 0,
         }
     }
 }
@@ -166,5 +161,65 @@ impl AppState {
                 Ok(State::default())
             }
         })
+    }
+
+    pub fn get_period_interval(cx: &App) -> (chrono::NaiveDate, chrono::NaiveDate) {
+        let period = Self::global(cx).read(cx).state_values.period;
+        let period_idx = Self::global(cx).read(cx).state_values.period_idx;
+        let today_date = chrono::Local::now().date_naive();
+        let interval_end = match period {
+            Period::Week => {
+                let end_of_week = today_date
+                    - chrono::Duration::days(today_date.weekday().num_days_from_monday() as i64)
+                    - chrono::Duration::weeks(period_idx as i64);
+                end_of_week
+            }
+            Period::Month => {
+                let mut year = today_date.year();
+                let mut month = today_date.month() as i32 - period_idx as i32;
+                while month <= 0 {
+                    month += 12;
+                    year -= 1;
+                }
+                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
+                    .unwrap()
+                    .checked_sub_signed(chrono::Duration::days(1))
+                    .expect("valid date")
+            }
+            Period::Year => {
+                let year = today_date.year() - period_idx as i32;
+                chrono::NaiveDate::from_ymd_opt(year, 12, 31).expect("valid date")
+            }
+        };
+        let interval_start = match period {
+            Period::Week => interval_end + chrono::Duration::days(1) - chrono::Duration::weeks(1),
+            Period::Month => {
+                let mut year = interval_end.year();
+                let mut month = interval_end.month() as i32;
+                while month <= 1 {
+                    month += 12;
+                    year -= 1;
+                }
+                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1).expect("valid date")
+            }
+            Period::Year => {
+                chrono::NaiveDate::from_ymd_opt(interval_end.year(), 1, 1).expect("valid date")
+            }
+        };
+        (interval_start, interval_end)
+    }
+
+    pub fn update_period_next(cx: &mut App) {
+        Self::global(cx).update(cx, |this, cx| {
+            this.state_values.period_idx -= 1;
+            cx.notify();
+        });
+    }
+
+    pub fn update_period_prev(cx: &mut App) {
+        Self::global(cx).update(cx, |this, cx| {
+            this.state_values.period_idx += 1;
+            cx.notify();
+        });
     }
 }

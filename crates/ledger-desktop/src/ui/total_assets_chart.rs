@@ -37,25 +37,10 @@ impl TotalAssetsChart {
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let period = AppState::get_period(cx);
         let total_assets = total_assets::TotalAssets::global(cx);
         let total_assets = total_assets.read(cx);
 
-        // Collect all dates from total assets data
-        let all_dates: Vec<chrono::NaiveDate> = total_assets.iter().map(|(d, _)| *d).collect();
-
-        if all_dates.is_empty() {
-            return;
-        }
-
-        let min_date = *all_dates.first().expect("at least one date exists");
-        let max_date = *all_dates.last().expect("at least one date exists");
-
-        // Calculate period start date based on max_date (latest transaction)
-        let period_start = period.start_date(max_date).unwrap_or(min_date);
-
-        // Apply period filter: use max of period_start and min_date
-        let filtered_start = period_start.max(min_date);
+        let (min_date, max_date) = AppState::get_period_interval(cx);
 
         let converter = CurrencyConverter::global(cx).read(cx);
         let target_commodity = AppState::get_commodity(cx);
@@ -64,7 +49,7 @@ impl TotalAssetsChart {
         let mut plot_balances = Vec::new();
 
         // Iterate through each day in the filtered range
-        let mut current_date = filtered_start;
+        let mut current_date = min_date;
         while current_date <= max_date {
             // Find the balance for this date (or the most recent one before it)
             let balance = total_assets
