@@ -21,7 +21,8 @@ pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
 }
 
 pub struct Window {
-    total_assets_chart: Entity<charts::total_assets::line::Chart>,
+    total_assets_line_chart: Entity<charts::total_assets::line::Chart>,
+    total_assets_pie_chart: Entity<charts::total_assets::pie::Chart>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
     period_selector: Entity<period_selector::PeriodSelector>,
@@ -34,7 +35,8 @@ impl Window {
     fn new(window: &mut gpui::Window, cx: &mut Context<Self>) -> Self {
         let accounts_tree = accounts_tree::init(cx);
         let register_view = transactions_register::init(window, cx);
-        let total_assets_chart = charts::total_assets::line::init(cx);
+        let total_assets_line_chart = charts::total_assets::line::init(cx);
+        let total_assets_pie_chart = charts::total_assets::pie::init(cx);
 
         let mut subscriptions = vec![];
         subscriptions.push(
@@ -43,7 +45,7 @@ impl Window {
                 this.register_view.update(_cx, |this, cx| {
                     this.refresh_data(cx);
                 });
-                this.total_assets_chart.update(_cx, |this, cx| {
+                this.total_assets_line_chart.update(_cx, |this, cx| {
                     this.refresh_data(cx);
                 });
             }),
@@ -62,7 +64,8 @@ impl Window {
         );
 
         Self {
-            total_assets_chart,
+            total_assets_line_chart,
+            total_assets_pie_chart,
             accounts_tree,
             register_view,
             period_selector: period_selector::init(cx),
@@ -102,10 +105,20 @@ impl Render for Window {
                                             .child(self.commodity_selector.clone()),
                                     )
                                     .child(
-                                        div()
+                                        h_flex()
                                             .size_full()
-                                            .p_2()
-                                            .child(self.total_assets_chart.clone()),
+                                            .child(
+                                                div()
+                                                    .size_full()
+                                                    .p_2()
+                                                    .child(self.total_assets_line_chart.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .size_full()
+                                                    .p_2()
+                                                    .child(self.total_assets_pie_chart.clone()),
+                                            ),
                                     )
                                     .child(self.register_view.clone()),
                             ),
