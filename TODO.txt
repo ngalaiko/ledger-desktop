@@ -1,3 +1,4 @@
+- revolut-style analytics widgets + charts
 - listen for source file changes and reload transactions
 - handle ledger errors
 - show account balance
