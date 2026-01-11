@@ -6,9 +6,9 @@ use gpui_component::{
     h_flex,
     list::ListItem,
     tree::{tree, TreeItem, TreeState},
-    IconName,
 };
 
+use crate::icons::IconName;
 use ledger::{Account, TreeNode};
 use state::AppState;
 

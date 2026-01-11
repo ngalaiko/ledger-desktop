@@ -1,4 +1,6 @@
+mod assets;
 mod data;
+mod icons;
 mod ui;
 
 use gpui::prelude::*;
@@ -7,7 +9,8 @@ use gpui::{
     WindowBounds, WindowDecorations, WindowKind, WindowOptions,
 };
 use gpui_component::Root;
-use gpui_component_assets::Assets;
+
+use self::assets::Assets;
 
 fn main() {
     Application::new().with_assets(Assets).run(move |cx| {

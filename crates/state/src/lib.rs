@@ -39,6 +39,7 @@ setting_accessors! {
     pub expanded_accounts: HashSet<Account>,
     pub period: Period,
     pub period_idx: usize,
+    pub selected_total_assets_tab_idx: usize,
 }
 
 static CURRENT_VERSION: &str = "1.0";
@@ -52,6 +53,7 @@ pub struct State {
     pub period: Period,
     // index of the current period. 0 = current, 1 = previous, 2 = two periods ago, etc.
     pub period_idx: usize,
+    pub selected_total_assets_tab_idx: usize,
 }
 
 impl Default for State {
@@ -63,6 +65,7 @@ impl Default for State {
             expanded_accounts: HashSet::new(),
             period: Period::Month,
             period_idx: 0,
+            selected_total_assets_tab_idx: 0,
         }
     }
 }

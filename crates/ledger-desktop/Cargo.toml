@@ -10,12 +10,13 @@ ledger = { path = "../ledger" }
 ui = { path = "../ui" }
 
 chrono.workspace = true
+anyhow.workspace = true
 fastnum.workspace = true
 serde.workspace = true
 schemars.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
-gpui-component-assets.workspace = true
+rust-embed = "8.9.0"
 
 [lints]
 workspace = true
