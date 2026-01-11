@@ -8,9 +8,9 @@ use gpui::*;
 use gpui_component::{
     h_flex,
     resizable::{h_resizable, resizable_panel},
-    v_flex, TitleBar,
+    v_flex, StyledExt, TitleBar,
 };
-use state::AppState;
+use state::{period::Period, AppState};
 
 use self::components::{commodity_selector, period_selector};
 use self::transactions_register::RegisterView;
@@ -71,7 +71,9 @@ impl Window {
 }
 
 impl Render for Window {
-    fn render(&mut self, _window: &mut gpui::Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (from, to) = state::AppState::get_period_interval(cx);
+        let period = state::AppState::get_period(cx);
         v_flex()
             .size_full()
             .child(TitleBar::new().child(div().text_center().flex_1().child("ledger-desktop")))
@@ -91,12 +93,23 @@ impl Render for Window {
                                         h_flex()
                                             .w_full()
                                             .justify_between()
-                                            .child(
-                                                h_flex()
-                                                    .child(self.period_selector.clone())
-                                                    .child(self.period_toggle.clone()),
-                                            )
+                                            .child(div())
+                                            .child(self.period_toggle.clone())
                                             .child(self.commodity_selector.clone()),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .w_full()
+                                            .justify_between()
+                                            .child(div().flex().font_semibold().text_lg().child(
+                                                match period {
+                                                    Period::Week | Period::Month => {
+                                                        to.format("%B %Y").to_string()
+                                                    }
+                                                    Period::Year => to.format("%Y").to_string(),
+                                                },
+                                            ))
+                                            .child(self.period_selector.clone()),
                                     )
                                     .child(self.total_assets.clone())
                                     .child(self.register_view.clone()),

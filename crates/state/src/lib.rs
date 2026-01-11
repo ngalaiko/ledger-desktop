@@ -212,6 +212,13 @@ impl AppState {
         (interval_start, interval_end)
     }
 
+    pub fn update_period_today(cx: &mut App) {
+        Self::global(cx).update(cx, |this, cx| {
+            this.state_values.period_idx = 0;
+            cx.notify();
+        });
+    }
+
     pub fn update_period_next(cx: &mut App) {
         Self::global(cx).update(cx, |this, cx| {
             this.state_values.period_idx -= 1;

@@ -23,10 +23,8 @@ impl PeriodSelector {
 
 impl Render for PeriodSelector {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (from, to) = state::AppState::get_period_interval(cx);
         let period_idx = state::AppState::get_period_idx(cx);
         h_flex()
-            .w_full()
             .child(
                 Button::new(SharedString::from("period-back"))
                     .ghost()
@@ -35,11 +33,14 @@ impl Render for PeriodSelector {
                         state::AppState::update_period_prev(cx);
                     })),
             )
-            .child(format!(
-                "{} - {}",
-                from.format("%Y-%m-%d"),
-                to.format("%Y-%m-%d"),
-            ))
+            .child(
+                Button::new("period-today")
+                    .ghost()
+                    .child("Today")
+                    .on_click(cx.listener(|_this, _event, _window, cx| {
+                        state::AppState::update_period_today(cx);
+                    })),
+            )
             .child(
                 Button::new(SharedString::from("period-next"))
                     .ghost()
