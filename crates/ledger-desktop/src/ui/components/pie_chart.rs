@@ -182,7 +182,7 @@ impl PlotInner {
     pub fn set_data(&mut self, values: HashMap<String, f64>) {
         // Convert to sorted vec for consistent ordering
         let mut data: Vec<(String, f64)> = values.into_iter().filter(|(_, v)| *v > 0.0).collect();
-        data.sort_by(|a, b| a.0.cmp(&b.0));
+        data.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         self.total = data.iter().map(|(_, v)| v).sum();
         self.data = data;
