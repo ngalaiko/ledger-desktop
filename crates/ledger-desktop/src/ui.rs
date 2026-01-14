@@ -72,7 +72,7 @@ impl Window {
 
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (from, to) = state::AppState::get_period_interval(cx);
+        let (_from, to) = state::AppState::get_period_interval(cx);
         let period = state::AppState::get_period(cx);
         v_flex()
             .size_full()
