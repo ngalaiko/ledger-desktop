@@ -59,15 +59,14 @@ impl Chart {
                 .map(|(_, b)| b.clone())
                 .unwrap_or_else(Balance::new);
 
-            let converted_balance = convert_balance(
-                &converter,
-                &balance,
-                target_commodity.as_deref(),
-                current_date,
-            );
+            let balance = if let Some(target_commodity) = &target_commodity {
+                converter.convert_balance(&balance, &target_commodity, current_date)
+            } else {
+                balance
+            };
 
             plot_dates.push(current_date);
-            plot_balances.push(converted_balance);
+            plot_balances.push(balance);
 
             current_date += chrono::Duration::days(1);
         }
@@ -79,28 +78,6 @@ impl Chart {
             chart.refresh_data(&plot_dates, values, cx);
         });
     }
-}
-
-fn convert_balance(
-    converter: &CurrencyConverter,
-    balance: &Balance,
-    target_commodity: Option<&str>,
-    at_date: chrono::NaiveDate,
-) -> Balance {
-    let Some(target_commodity) = target_commodity else {
-        // No conversion, return balance as-is
-        return balance.clone();
-    };
-
-    let mut converted_balance = Balance::new();
-    for amount in balance.iter() {
-        if let Some(converted_amount) = converter.convert(amount, target_commodity, at_date) {
-            converted_balance.add_amount(converted_amount);
-        } else {
-            converted_balance.add_amount(amount.clone());
-        }
-    }
-    converted_balance
 }
 
 fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Option<f64>>> {

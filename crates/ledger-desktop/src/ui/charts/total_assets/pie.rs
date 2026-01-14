@@ -62,34 +62,17 @@ impl Chart {
                 continue;
             }
 
-            let balance = running_balance.get_balance(account, max_date);
+            let balance = converter.convert_balance(
+                &running_balance.get_balance(account, max_date),
+                &target_commodity,
+                max_date,
+            );
 
             // Try to get the target commodity amount directly
             let amount = if let Some(amount) = balance.get_amount(&target_commodity) {
                 Some(amount.clone())
             } else {
-                // Try to convert other commodities to the target
-                let mut total = 0.0;
-                let mut found = false;
-                for amount in balance.iter() {
-                    if amount.commodity == target_commodity {
-                        total += amount.value.to_f64();
-                        found = true;
-                    } else if let Some(converted) =
-                        converter.convert(amount, &target_commodity, max_date)
-                    {
-                        total += converted.value.to_f64();
-                        found = true;
-                    }
-                }
-                if found {
-                    Some(ledger::CurrencyAmount {
-                        value: total.into(),
-                        commodity: target_commodity.clone(),
-                    })
-                } else {
-                    None
-                }
+                None
             };
 
             if let Some(amount) = amount {

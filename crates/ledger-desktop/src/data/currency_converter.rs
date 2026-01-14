@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use fastnum::D128;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription};
-use ledger::{CurrencyAmount, Price};
+use ledger::{Balance, CurrencyAmount, Price};
 
 pub fn init(cx: &mut App) {
     CurrencyConverter::set_global(cx.new(CurrencyConverter::new), cx);
@@ -93,7 +93,7 @@ impl CurrencyConverter {
         history
     }
 
-    pub fn convert(
+    pub fn convert_amount(
         &self,
         amount: &CurrencyAmount,
         target_commodity: &str,
@@ -111,6 +111,23 @@ impl CurrencyConverter {
             value: amount.value * (*price),
             commodity: target_commodity.to_string(),
         })
+    }
+
+    pub fn convert_balance(
+        &self,
+        balance: &Balance,
+        target_commodity: &str,
+        at_date: chrono::NaiveDate,
+    ) -> Balance {
+        let mut converted_balance = Balance::new();
+        for amount in balance.iter() {
+            if let Some(converted_amount) = self.convert_amount(amount, target_commodity, at_date) {
+                converted_balance.add_amount(converted_amount);
+            } else {
+                converted_balance.add_amount(amount.clone());
+            }
+        }
+        converted_balance
     }
 
     pub fn available_commodities(&self) -> Vec<String> {

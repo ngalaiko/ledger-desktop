@@ -87,9 +87,11 @@ fn convert_transaction(
             .postings
             .iter()
             .map(|p| {
-                if let Some(converted_amount) =
-                    converter.convert(&p.amount.value, target_commodity.as_str(), transaction.date)
-                {
+                if let Some(converted_amount) = converter.convert_amount(
+                    &p.amount.value,
+                    target_commodity.as_str(),
+                    transaction.date,
+                ) {
                     Posting {
                         amount: Amount {
                             value: converted_amount,
