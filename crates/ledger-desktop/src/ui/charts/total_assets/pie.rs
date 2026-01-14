@@ -24,11 +24,9 @@ impl Chart {
     fn new(cx: &mut Context<Self>) -> Self {
         let running_balance = RunningBalance::global(cx);
         let mut subscriptions = vec![];
-        subscriptions.push(
-            cx.observe(&running_balance, |this, _running_balance, cx| {
-                this.refresh_data(cx);
-            }),
-        );
+        subscriptions.push(cx.observe(&running_balance, |this, _running_balance, cx| {
+            this.refresh_data(cx);
+        }));
         Self {
             chart: cx.new(|cx| PieChart::new(cx)),
             _subscriptions: subscriptions,
@@ -57,7 +55,10 @@ impl Chart {
         // For each account, get balance at max_date and extract the target commodity value
         for (account, _) in running_balance.iter() {
             // Only include asset and liability accounts
-            if !matches!(account.type_of, AccountType::Assets | AccountType::Liabilities) {
+            if !matches!(
+                account.type_of,
+                AccountType::Assets | AccountType::Liabilities
+            ) {
                 continue;
             }
 
