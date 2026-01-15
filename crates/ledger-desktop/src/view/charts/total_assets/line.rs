@@ -12,7 +12,7 @@ use crate::data::total_assets::TotalAssets;
 use crate::view::components::line_chart::LineChart;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
-    cx.new(|cx| Chart::new(cx))
+    cx.new(Chart::new)
 }
 
 pub struct Chart {
@@ -34,7 +34,7 @@ impl Chart {
                     this.chart.update(cx, |this, cx| {
                         let app_state = app_state.read(cx);
                         let (dates, values) = calculate(
-                            &total_assets.read(cx),
+                            total_assets.read(cx),
                             app_state.values.get_period_interval(),
                         );
                         this.refresh_data(&dates, values, cx);
@@ -44,7 +44,7 @@ impl Chart {
             ),
         );
         Self {
-            chart: cx.new(|cx| LineChart::new(cx)),
+            chart: cx.new(LineChart::new),
             _subscriptions: subscriptions,
         }
     }
@@ -67,7 +67,7 @@ fn calculate(
             .filter(|(d, _)| **d <= current_date)
             .last()
             .map(|(_, b)| b.clone())
-            .unwrap_or_else(Balance::new);
+            .unwrap_or_default();
 
         plot_dates.push(current_date);
         plot_balances.push(balance);

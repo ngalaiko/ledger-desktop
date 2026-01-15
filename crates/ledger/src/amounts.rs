@@ -23,7 +23,7 @@ impl fmt::Display for CurrencyAmount {
 }
 
 impl CurrencyAmount {
-    pub fn from_str(amount_str: &str) -> Result<Self, ParseAmountError> {
+    pub fn parse(amount_str: &str) -> Result<Self, ParseAmountError> {
         let amount_str = amount_str.trim();
         let mut parts = amount_str.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
@@ -75,7 +75,7 @@ impl Amount {
                 .ok_or(ParseAmountError::InvalidFormat)?;
             let price_str = &amount_str[price_start + 1..price_end].trim();
             let price =
-                CurrencyAmount::from_str(price_str).map_err(|_| ParseAmountError::InvalidFormat)?;
+                CurrencyAmount::parse(price_str).map_err(|_| ParseAmountError::InvalidFormat)?;
             Ok(Some(price))
         } else {
             Ok(None)
@@ -99,7 +99,7 @@ impl Amount {
         } else {
             amount_str
         };
-        let value = CurrencyAmount::from_str(amount_str)?;
+        let value = CurrencyAmount::parse(amount_str)?;
         Ok(Amount {
             value,
             cost: price,

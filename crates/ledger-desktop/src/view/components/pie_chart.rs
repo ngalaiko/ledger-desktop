@@ -1,13 +1,11 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    f32::consts::{PI, TAU},
+    f32::consts::{FRAC_PI_2, SQRT_2, TAU},
     hash::Hash,
     rc::Rc,
 };
 
-const HALF_PI: f32 = PI / 2.0;
-const SQRT_2: f32 = 1.41421356;
 /// Inner radius as a fraction of outer radius (0.5 = donut with hole half the size)
 const INNER_RADIUS_RATIO: f32 = 0.8;
 
@@ -57,6 +55,7 @@ impl PieChart {
 }
 
 impl Render for PieChart {
+    #[allow(clippy::too_many_lines)]
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();
         let tooltip_data = {
@@ -137,13 +136,12 @@ impl Render for PieChart {
             })
             // Tooltip on hover
             .when_some(hovered_data, |this, (label, value, color, percentage)| {
-                let position = if self.mouse_position.map(|p| p.x.as_f32()).unwrap_or(0.0)
+                let position = if self.mouse_position.map_or(0.0, |p| p.x.as_f32())
                     < self
                         .plot_inner
                         .bounds
                         .get()
-                        .map(|b| b.size.width.as_f32() / 2.0)
-                        .unwrap_or(0.0)
+                        .map_or(0.0, |b| b.size.width.as_f32() / 2.0)
                 {
                     TooltipPosition::Right
                 } else {
@@ -171,12 +169,12 @@ impl Render for PieChart {
                             h_flex()
                                 .gap_2()
                                 .text_sm()
-                                .child(format!("{:.2}", value))
+                                .child(format!("{value:.2}"))
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child(format!("({:.1}%)", percentage)),
+                                        .child(format!("({percentage:.1}%)")),
                                 ),
                         ),
                 )
@@ -244,7 +242,7 @@ impl PlotInner {
         }
 
         // Calculate angle from center (adjust to match Pie's coordinate system)
-        let mut angle = dy.atan2(dx) + HALF_PI;
+        let mut angle = dy.atan2(dx) + FRAC_PI_2;
         if angle < 0.0 {
             angle += TAU;
         }
@@ -276,6 +274,7 @@ impl Plot for PlotInner {
             .inner_radius(inner_radius)
             .outer_radius(outer_radius);
 
+        #[allow(clippy::cast_possible_truncation)]
         let pie = Pie::<(String, f64)>::new().value(|(_, v)| Some(*v as f32));
         let arcs = pie.arcs(&self.data);
 
@@ -311,6 +310,7 @@ fn get_color(colors: &[Hsla], label: &String) -> Hsla {
         label.hash(&mut hasher);
         hasher.finish()
     };
+    #[allow(clippy::cast_possible_truncation)]
     let color_idx = (hash as usize) % colors.len();
     colors[color_idx]
 }

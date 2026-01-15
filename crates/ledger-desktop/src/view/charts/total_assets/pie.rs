@@ -12,7 +12,7 @@ use state::AppState;
 use crate::view::components::pie_chart::PieChart;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
-    cx.new(|cx| Chart::new(cx))
+    cx.new(Chart::new)
 }
 
 pub struct Chart {
@@ -34,7 +34,7 @@ impl Chart {
                     this.chart.update(cx, |this, cx| {
                         let app_state = app_state.read(cx);
                         let values = calculate(
-                            &running_balance.read(cx),
+                            running_balance.read(cx),
                             app_state.values.get_period_interval(),
                             app_state.values.commodity.as_deref(),
                         );
@@ -45,7 +45,7 @@ impl Chart {
             ),
         );
         Self {
-            chart: cx.new(|cx| PieChart::new(cx)),
+            chart: cx.new(PieChart::new),
             _subscriptions: subscriptions,
         }
     }

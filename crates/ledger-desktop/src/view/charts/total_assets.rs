@@ -9,7 +9,7 @@ mod line;
 mod pie;
 
 pub fn init(cx: &mut App) -> Entity<TotalAssets> {
-    cx.new(|cx| TotalAssets::new(cx))
+    cx.new(TotalAssets::new)
 }
 
 pub struct TotalAssets {

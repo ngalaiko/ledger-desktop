@@ -9,7 +9,7 @@ use gpui_component::{
 use state::period::Period;
 
 pub fn init(cx: &mut App) -> Entity<PeriodToggle> {
-    cx.new(|cx| PeriodToggle::new(cx))
+    cx.new(PeriodToggle::new)
 }
 
 pub struct PeriodToggle {
@@ -32,7 +32,7 @@ impl Render for PeriodToggle {
             .iter()
             .fold(button, |button, &period| {
                 button.child(
-                    Button::new(SharedString::from(format!("period-{}", period)))
+                    Button::new(SharedString::from(format!("period-{period}")))
                         .label(period.to_string())
                         .selected(selected == period),
                 )

@@ -108,7 +108,7 @@ impl Account {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Balance {
     by_commodity: BTreeMap<String, CurrencyAmount>,
 }
@@ -125,9 +125,7 @@ impl fmt::Display for Balance {
 
 impl Balance {
     pub fn new() -> Self {
-        Self {
-            by_commodity: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     pub fn get_amount(&self, commodity: &str) -> Option<&CurrencyAmount> {
@@ -179,12 +177,18 @@ pub struct TreeNode {
     pub children: Vec<TreeNode>,
 }
 
-impl TreeNode {
-    pub fn new() -> Self {
+impl Default for TreeNode {
+    fn default() -> Self {
         Self {
             account: Account::empty(),
             children: Vec::new(),
         }
+    }
+}
+
+impl TreeNode {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn clear(&mut self) {
@@ -193,7 +197,7 @@ impl TreeNode {
     }
 
     pub fn add_account(&mut self, account: &Account) {
-        self.add_account_recursive(&account, 0)
+        self.add_account_recursive(account, 0)
     }
 
     pub fn find_node(&self, account: &Account) -> Option<&TreeNode> {

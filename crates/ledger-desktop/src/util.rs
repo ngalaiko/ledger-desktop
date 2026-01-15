@@ -22,6 +22,7 @@ pub trait ObserveMultiple<T: 'static> {
 ///     },
 /// );
 /// ```
+#[allow(clippy::needless_pass_by_value)]
 pub fn observe_multiple<T: 'static, M: ObserveMultiple<T>>(
     cx: &mut Context<T>,
     entities: M,

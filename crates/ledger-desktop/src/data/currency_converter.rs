@@ -82,20 +82,20 @@ fn calculate(
         {
             let to_map = history
                 .entry(price.commodity.clone())
-                .or_insert_with(HashMap::new);
+                .or_default();
             let date_map = to_map
                 .entry(price.value.commodity.clone())
-                .or_insert_with(BTreeMap::new);
+                .or_default();
             date_map.insert(price.date, price.value.value);
         }
 
         {
             let from_map = history
                 .entry(price.value.commodity.clone())
-                .or_insert_with(HashMap::new);
+                .or_default();
             let date_map = from_map
                 .entry(price.commodity.clone())
-                .or_insert_with(BTreeMap::new);
+                .or_default();
             date_map.insert(price.date, D128::ONE / price.value.value);
         }
     };

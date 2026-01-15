@@ -6,7 +6,7 @@ use ledger::{Account, Balance};
 use super::transactions::Transactions;
 
 pub fn init(cx: &mut App) {
-    RunningBalance::set_global(cx.new(|cx| RunningBalance::new(cx)), cx);
+    RunningBalance::set_global(cx.new(RunningBalance::new), cx);
 }
 
 struct GlobalRunningBalance(Entity<RunningBalance>);
@@ -59,29 +59,29 @@ impl RunningBalance {
 fn calculate(
     transactions: &[ledger::Transaction],
 ) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
-    let mut data: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
-    for transaction in transactions.iter() {
-        let date = transaction.date.clone();
+    let mut result: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
+    for transaction in transactions {
+        let tx_date = transaction.date;
         for posting in &transaction.postings {
             let account = posting.account.clone();
             let amount = posting.amount.value.clone();
 
-            let account_balances = data.entry(account).or_insert_with(BTreeMap::new);
+            let account_balances = result.entry(account).or_default();
 
-            if let Some(balance) = account_balances.get_mut(&date) {
+            if let Some(balance) = account_balances.get_mut(&tx_date) {
                 balance.add_amount(amount);
             } else {
                 let previous_balance = account_balances
-                    .range(..date)
+                    .range(..tx_date)
                     .next_back()
                     .map(|(_, b)| b.clone())
-                    .unwrap_or_else(Balance::new);
+                    .unwrap_or_default();
                 let mut new_balance = previous_balance;
                 new_balance.add_amount(amount);
-                account_balances.insert(date, new_balance);
+                account_balances.insert(tx_date, new_balance);
             }
         }
     }
 
-    data
+    result
 }

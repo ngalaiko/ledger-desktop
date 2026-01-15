@@ -49,7 +49,7 @@ impl RegisterView {
                                 filter_map_visible_transaction(transaction, &visible_accounts)
                             })
                             .map(|tx| {
-                                convert_transaction(&converter, &tx, AppState::get_commodity(cx))
+                                convert_transaction(converter, &tx, AppState::get_commodity(cx))
                             })
                             .collect::<Vec<_>>();
                         this.table_state.update(cx, |table_state, cx| {

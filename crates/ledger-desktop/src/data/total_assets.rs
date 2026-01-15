@@ -58,7 +58,7 @@ fn calculate(running_balance: &RunningBalance) -> BTreeMap<chrono::NaiveDate, Ba
         .iter()
         .filter_map(|(account, _)| match account.type_of {
             ledger::AccountType::Assets | ledger::AccountType::Liabilities => Some(account),
-            _ => None,
+            ledger::AccountType::Unknown => None,
         })
         .collect::<Vec<_>>();
     let all_dates = running_balance
@@ -70,7 +70,7 @@ fn calculate(running_balance: &RunningBalance) -> BTreeMap<chrono::NaiveDate, Ba
             )
         })
         .flat_map(|(_, date_balances)| date_balances.keys())
-        .cloned()
+        .copied()
         .collect::<std::collections::BTreeSet<_>>();
 
     if all_dates.is_empty() {

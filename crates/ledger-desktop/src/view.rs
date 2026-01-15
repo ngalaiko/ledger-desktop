@@ -59,7 +59,7 @@ impl Render for Window {
                         .child(
                             resizable_panel()
                                 .size(px(250.))
-                                .child(self.accounts_tree.clone()),
+                                .child(Entity::clone(&self.accounts_tree)),
                         )
                         .child(
                             resizable_panel().child(
@@ -70,8 +70,8 @@ impl Render for Window {
                                             .w_full()
                                             .justify_between()
                                             .child(div())
-                                            .child(self.period_toggle.clone())
-                                            .child(self.commodity_selector.clone()),
+                                            .child(Entity::clone(&self.period_toggle))
+                                            .child(Entity::clone(&self.commodity_selector)),
                                     )
                                     .child(
                                         h_flex()
@@ -85,10 +85,10 @@ impl Render for Window {
                                                     Period::Year => to.format("%Y").to_string(),
                                                 },
                                             ))
-                                            .child(self.period_selector.clone()),
+                                            .child(Entity::clone(&self.period_selector)),
                                     )
-                                    .child(self.total_assets.clone())
-                                    .child(self.register_view.clone()),
+                                    .child(Entity::clone(&self.total_assets))
+                                    .child(Entity::clone(&self.register_view)),
                             ),
                         ),
                 ),

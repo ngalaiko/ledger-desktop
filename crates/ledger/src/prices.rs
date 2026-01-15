@@ -18,7 +18,7 @@ pub struct Price {
 }
 
 impl Price {
-    pub fn from_str(value: &str) -> Result<Self, ParsePriceError> {
+    pub fn parse(value: &str) -> Result<Self, ParsePriceError> {
         let Some(whitespace_pos) = value.find(' ') else {
             return Err(ParsePriceError::InvalidFormat);
         };
@@ -44,7 +44,7 @@ impl Price {
         }?;
 
         let currency_amount =
-            CurrencyAmount::from_str(rest.trim()).map_err(ParsePriceError::ParseAmountError)?;
+            CurrencyAmount::parse(rest.trim()).map_err(ParsePriceError::ParseAmountError)?;
 
         Ok(Price {
             date,
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn test_price_from_str_quoted_commodity() {
         let price_str = "2018/08/24 \"Nordea Nora Three\"   103.50 SEK";
-        let price = Price::from_str(price_str).expect("should parse price");
+        let price = Price::parse(price_str).expect("should parse price");
         assert_eq!(
             price.date,
             chrono::NaiveDate::from_ymd_opt(2018, 8, 24).expect("valid date")
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_price_from_str_simple_commodity() {
         let price_str = "2023/08/31 EUR         12.05 SEK";
-        let price = Price::from_str(price_str).expect("should parse price");
+        let price = Price::parse(price_str).expect("should parse price");
         assert_eq!(
             price.date,
             chrono::NaiveDate::from_ymd_opt(2023, 8, 31).expect("valid date")
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn test_price_from_str_utf8() {
         let price_str = "2022/05/23 \"Öhman Räntefond Kompass A\"   102.64 SEK";
-        let price = Price::from_str(price_str).expect("should parse price");
+        let price = Price::parse(price_str).expect("should parse price");
         assert_eq!(
             price.date,
             chrono::NaiveDate::from_ymd_opt(2022, 5, 23).expect("valid date")

@@ -68,6 +68,7 @@ impl LineChart {
 }
 
 impl Render for LineChart {
+    #[allow(clippy::too_many_lines)]
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();
         let tooltip_data = {
@@ -135,7 +136,7 @@ impl Render for LineChart {
                     .values
                     .iter()
                     .filter_map(|(commodity, values_vec)| {
-                        values_vec[hovered_idx].and_then(|v| Some((commodity, v)))
+                        values_vec[hovered_idx].map(|v| (commodity, v))
                     })
                     .collect::<Vec<_>>();
 
@@ -143,8 +144,8 @@ impl Render for LineChart {
                 let dots: Vec<Dot> = values
                     .iter()
                     .filter_map(|(commodity, value)| {
-                        let color = get_color(&self.colors, &commodity);
-                        y_scale.tick(&value).map(|y_pos| {
+                        let color = get_color(&self.colors, commodity);
+                        y_scale.tick(value).map(|y_pos| {
                             Dot::new(point(px(x_pos), px(y_pos)))
                                 .size(px(10.0))
                                 .fill(color)
@@ -174,7 +175,7 @@ impl Render for LineChart {
                         .shadow_lg()
                         .child(div().text_sm().font_semibold().child(date.to_string()))
                         .children(values.iter().map(|(commodity, value)| {
-                            let color = get_color(&self.colors, &commodity);
+                            let color = get_color(&self.colors, commodity);
 
                             h_flex()
                                 .gap_2()
@@ -187,7 +188,7 @@ impl Render for LineChart {
                                         .font_medium()
                                         .w_full()
                                         .justify_between()
-                                        .child(commodity.to_string())
+                                        .child((*commodity).clone())
                                         .child(value.to_string()),
                                 )
                         })),
@@ -238,7 +239,7 @@ impl PlotInner {
         let mut min_balance = f64::MAX;
         let mut max_balance = f64::MIN;
 
-        for (_label, values) in self.values.iter() {
+        for values in self.values.values() {
             debug_assert!(
                 values.len() == self.dates.len(),
                 "Values length must match dates length"
@@ -330,12 +331,13 @@ impl Plot for PlotInner {
         let (x_scale, y_scale) = self.get_or_compute_scales(&bounds);
 
         // Create Y-axis labels
+        #[allow(clippy::cast_precision_loss)]
         let y_labels: Vec<AxisText> = (0..Y_AXIS_LABEL_COUNT)
             .filter_map(|i| {
                 let value = self.y_min
                     + (self.y_max - self.y_min) * i as f64 / (Y_AXIS_LABEL_COUNT - 1) as f64;
                 y_scale.tick(&value).map(|tick| {
-                    AxisText::new(format!("{:.0}", value), tick, cx.theme().muted_foreground)
+                    AxisText::new(format!("{value:.0}"), tick, cx.theme().muted_foreground)
                 })
             })
             .collect();
@@ -349,7 +351,7 @@ impl Plot for PlotInner {
             .filter_map(|(i, d)| {
                 if i % tick_margin == 0 {
                     x_scale
-                        .tick(&d)
+                        .tick(d)
                         .map(|tick| AxisText::new(d.to_string(), tick, cx.theme().muted_foreground))
                 } else {
                     None
@@ -366,8 +368,8 @@ impl Plot for PlotInner {
             .paint(&bounds, window, cx);
 
         // Draw a line for each label
-        for (label, values) in self.values.iter() {
-            let color = get_color(&self.colors, &label);
+        for (label, values) in &self.values {
+            let color = get_color(&self.colors, label);
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
@@ -383,13 +385,14 @@ impl Plot for PlotInner {
     }
 }
 
-fn get_color(colors: &[Hsla], commodity: &String) -> Hsla {
+fn get_color(colors: &[Hsla], commodity: &str) -> Hsla {
     let hash = {
         use std::hash::Hasher;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         commodity.hash(&mut hasher);
         hasher.finish()
     };
+    #[allow(clippy::cast_possible_truncation)]
     let color_idx = (hash as usize) % colors.len();
     colors[color_idx]
 }

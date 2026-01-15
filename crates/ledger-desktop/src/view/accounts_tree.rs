@@ -16,7 +16,7 @@ use ui::icons::IconName;
 use crate::util::observe_multiple;
 
 pub fn init(cx: &mut App) -> Entity<AccountsTreeView> {
-    cx.new(|cx| AccountsTreeView::new(cx))
+    cx.new(AccountsTreeView::new)
 }
 
 pub struct AccountsTreeView {
@@ -36,7 +36,7 @@ impl AccountsTreeView {
                 let tree_items = match ledger::File::accounts(cx) {
                     Ok(accounts) => {
                         let expanded_accounts = AppState::get_expanded_accounts(cx);
-                        build_items(&accounts, &expanded_accounts)
+                        build_items(accounts, &expanded_accounts)
                     }
                     Err(_) => vec![],
                 };
@@ -54,6 +54,7 @@ impl AccountsTreeView {
     }
 
     /// Calculate the checkbox state for a node based on its children
+    #[allow(clippy::unused_self)]
     fn calculate_state(
         &self,
         node: &TreeNode,
@@ -77,7 +78,7 @@ impl AccountsTreeView {
                 let all_descendants: Vec<Account> = node
                     .children
                     .iter()
-                    .flat_map(|child| child.collect_all_accounts())
+                    .flat_map(ledger::TreeNode::collect_all_accounts)
                     .collect();
                 let selected_count = all_descendants
                     .iter()
@@ -97,11 +98,11 @@ impl AccountsTreeView {
         }
     }
 
-    fn toggle_selection(&mut self, node: &TreeNode, account: Account, cx: &mut Context<Self>) {
-        let state = self.calculate_state(node, &account, cx);
+    fn toggle_selection(&mut self, node: &TreeNode, account: &Account, cx: &mut Context<Self>) {
+        let state = self.calculate_state(node, account, cx);
 
         // Get all descendants (including the account itself)
-        let mut descendants = node.get_descendants(&account);
+        let mut descendants = node.get_descendants(account);
         if descendants.is_empty() {
             descendants = vec![account.clone()];
         }
@@ -176,7 +177,7 @@ impl Render for AccountsTreeView {
                                         .on_click(move |_new_state, _window, cx| {
                                             let account = Account::parse(&item_id);
                                             view.update(cx, |this, cx| {
-                                                this.toggle_selection(&tree_node, account, cx);
+                                                this.toggle_selection(&tree_node, &account, cx);
                                             });
                                         })
                                 })

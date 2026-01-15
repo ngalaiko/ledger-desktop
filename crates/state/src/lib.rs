@@ -61,10 +61,9 @@ impl State {
         let today_date = chrono::Local::now().date_naive();
         let interval_end = match self.period {
             Period::Week => {
-                let end_of_week = today_date
+                today_date
                     - chrono::Duration::days(today_date.weekday().num_days_from_monday() as i64)
-                    - chrono::Duration::weeks(self.period_idx as i64);
-                end_of_week
+                    - chrono::Duration::weeks(self.period_idx as i64)
             }
             Period::Month => {
                 let mut year = today_date.year();

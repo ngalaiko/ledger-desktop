@@ -1,6 +1,17 @@
 #![allow(dead_code)]
+#![allow(
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::match_wildcard_for_single_variants,
+    clippy::redundant_closure_for_method_calls,
+    clippy::match_same_arms,
+    clippy::too_many_lines,
+    clippy::derivable_impls,
+    clippy::type_complexity,
+    clippy::ref_option
+)]
 
-/// This is a copy of https://github.com/longbridge/gpui-component/blob/v0.5.0/crates/ui/src/checkbox.rs
+/// This is a copy of <https://github.com/longbridge/gpui-component/blob/v0.5.0/crates/ui/src/checkbox.rs>
 /// with Indeterminate state support
 use std::{rc::Rc, time::Duration};
 

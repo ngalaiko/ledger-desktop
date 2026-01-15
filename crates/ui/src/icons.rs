@@ -1,4 +1,5 @@
 // src: https://github.com/longbridge/gpui-component/blob/52424615538e6cce0a5d29b671f03966b4e18874/crates/ui/src/icon.rs
+#![allow(clippy::must_use_candidate, clippy::return_self_not_must_use)]
 
 use gpui::{
     prelude::FluentBuilder as _, svg, AnyElement, App, AppContext, Context, Entity, Hsla,

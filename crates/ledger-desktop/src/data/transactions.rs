@@ -57,7 +57,7 @@ impl Transactions {
 
                 transactions
                     .iter()
-                    .map(|tx| convert_transaction(&converter, tx, target_commodity.clone()))
+                    .map(|tx| convert_transaction(converter, tx, target_commodity.clone()))
                     .collect()
             }
             Err(_) => Vec::new(),

@@ -63,7 +63,7 @@ impl Cli {
     pub async fn prices(&self) -> Result<impl Stream<Item = Result<Price, Error>>, Error> {
         let stream = self.exec(["prices"]).await?;
         Ok(stream.map(|result| match result {
-            Ok(line) => Price::from_str(&line).map_err(|e| Error::msg(e.to_string())),
+            Ok(line) => Price::parse(&line).map_err(|e| Error::msg(e.to_string())),
             Err(e) => Err(e),
         }))
     }

@@ -10,7 +10,7 @@ use gpui_component::Disableable;
 use ui::icons::IconName;
 
 pub fn init(cx: &mut App) -> Entity<PeriodSelector> {
-    cx.new(|cx| PeriodSelector::new(cx))
+    cx.new(PeriodSelector::new)
 }
 
 pub struct PeriodSelector {}

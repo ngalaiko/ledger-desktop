@@ -10,7 +10,7 @@ use gpui_component::menu::PopupMenuItem;
 use crate::data::currency_converter::CurrencyConverter;
 
 pub fn init(cx: &mut App) -> Entity<CommoditySelector> {
-    cx.new(|cx| CommoditySelector::new(cx))
+    cx.new(CommoditySelector::new)
 }
 
 pub struct CommoditySelector {}
