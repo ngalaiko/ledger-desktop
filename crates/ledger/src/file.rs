@@ -12,11 +12,11 @@ struct GlobalFile(Entity<File>);
 
 impl Global for GlobalFile {}
 
-struct FileState {
-    accounts: TreeNode,
-    transactions: Vec<Transaction>,
-    prices: Vec<Price>,
-    files: Vec<std::path::PathBuf>,
+pub struct FileState {
+    pub accounts: TreeNode,
+    pub transactions: Vec<Transaction>,
+    pub prices: Vec<Price>,
+    pub files: Vec<std::path::PathBuf>,
 }
 
 impl Default for FileState {
@@ -83,7 +83,7 @@ impl FileState {
 }
 
 pub struct File {
-    state: Entity<Result<FileState, Error>>,
+    pub state: Result<FileState, Error>,
     _tasks: Vec<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -97,8 +97,12 @@ impl File {
         cx.set_global(GlobalFile(file));
     }
 
+    pub fn state(cx: &App) -> &Result<FileState, Error> {
+        &Self::global(cx).read(cx).state
+    }
+
     pub fn prices(cx: &App) -> Result<&[Price], Error> {
-        let state = Self::global(cx).read(cx).state.read(cx);
+        let state = &Self::global(cx).read(cx).state;
         match state {
             Ok(state) => Ok(&state.prices),
             Err(e) => Err(Error::msg(e.to_string())),
@@ -106,7 +110,7 @@ impl File {
     }
 
     pub fn transactions(cx: &App) -> Result<&[Transaction], Error> {
-        let state = Self::global(cx).read(cx).state.read(cx);
+        let state = &Self::global(cx).read(cx).state;
         match state {
             Ok(state) => Ok(&state.transactions),
             Err(e) => Err(Error::msg(e.to_string())),
@@ -114,7 +118,7 @@ impl File {
     }
 
     pub fn accounts(cx: &App) -> Result<&TreeNode, Error> {
-        let state = Self::global(cx).read(cx).state.read(cx);
+        let state = &Self::global(cx).read(cx).state;
         match state {
             Ok(state) => Ok(&state.accounts),
             Err(e) => Err(Error::msg(e.to_string())),
@@ -131,8 +135,8 @@ impl File {
 
         subscriptions.push(
             // watch for changes to the loaded files
-            cx.observe_self(|this, cx| {
-                if let Ok(state) = this.state.read(cx) {
+            cx.observe_self(|this, _cx| {
+                if let Ok(state) = &this.state {
                     // todo: watch for changes
                     state
                         .files
@@ -147,7 +151,7 @@ impl File {
             cx.spawn(async move |this, cx| {
                 let state = load_state.await;
                 this.update(cx, |this, cx| {
-                    this.state = cx.new(|_cx| state);
+                    this.state = state;
                     cx.notify();
                 })
                 .ok();
@@ -155,7 +159,7 @@ impl File {
         );
 
         Self {
-            state: cx.new(|_cx| Ok(FileState::default())),
+            state: Ok(FileState::default()),
             _subscriptions: subscriptions,
             _tasks: tasks,
         }

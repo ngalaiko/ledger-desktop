@@ -10,7 +10,7 @@ use state::AppState;
 
 use ledger::{Account, Amount, Posting, Transaction};
 
-use crate::data::currency_converter::CurrencyConverter;
+use crate::{data::currency_converter::CurrencyConverter, util::observe_multiple};
 
 pub fn init(window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
     cx.new(|cx| RegisterView::new(window, cx))
@@ -18,32 +18,59 @@ pub fn init(window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
 
 pub struct RegisterView {
     table_state: Entity<TableState<TransactionTableDelegate>>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl RegisterView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let table_state =
             cx.new(|cx| TableState::new(TransactionTableDelegate::new(vec![]), window, cx));
+        let mut subscriptions = vec![];
 
-        Self { table_state }
-    }
+        subscriptions.push(observe_multiple(
+            cx,
+            (
+                &ledger::File::global(cx),
+                &AppState::global(cx),
+                &CurrencyConverter::global(cx),
+            ),
+            |this, cx| {
+                match ledger::File::transactions(cx) {
+                    Ok(_) => {
+                        let converter = CurrencyConverter::global(cx).read(cx);
+                        let transactions = ledger::File::transactions(cx).expect("todo");
+                        let visible_accounts = AppState::get_selected_accounts(cx);
+                        let visible_transactions = transactions
+                            .iter()
+                            .filter_map(|transaction| {
+                                filter_map_visible_transaction(transaction, &visible_accounts)
+                            })
+                            .map(|tx| {
+                                convert_transaction(&converter, &tx, AppState::get_commodity(cx))
+                            })
+                            .collect::<Vec<_>>();
+                        this.table_state.update(cx, |table_state, cx| {
+                            let delegate = table_state.delegate_mut();
+                            delegate.transactions = visible_transactions;
+                            table_state.refresh(cx);
+                        });
+                    }
+                    Err(_) => {
+                        // Clear table on error
+                        this.table_state.update(cx, |table_state, cx| {
+                            let delegate = table_state.delegate_mut();
+                            delegate.transactions.clear();
+                            table_state.refresh(cx);
+                        });
+                    }
+                }
+            },
+        ));
 
-    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let converter = CurrencyConverter::global(cx).read(cx);
-        let transactions = ledger::File::transactions(cx).expect("todo");
-        let visible_accounts = AppState::get_selected_accounts(cx);
-        let visible_transactions = transactions
-            .iter()
-            .filter_map(|transaction| {
-                filter_map_visible_transaction(transaction, &visible_accounts)
-            })
-            .map(|tx| convert_transaction(&converter, &tx, AppState::get_commodity(cx)))
-            .collect::<Vec<_>>();
-        self.table_state.update(cx, |table_state, cx| {
-            let delegate = table_state.delegate_mut();
-            delegate.transactions = visible_transactions;
-            table_state.refresh(cx);
-        });
+        Self {
+            table_state,
+            _subscriptions: subscriptions,
+        }
     }
 }
 

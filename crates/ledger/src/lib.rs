@@ -8,6 +8,6 @@ mod transactions;
 
 pub use accounts::{Account, AccountType, Balance, TreeNode};
 pub use amounts::{Amount, CurrencyAmount};
-pub use file::{init, File};
+pub use file::{init, File, FileState};
 pub use prices::Price;
 pub use transactions::{Posting, Transaction};

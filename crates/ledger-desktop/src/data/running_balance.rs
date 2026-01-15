@@ -31,18 +31,12 @@ impl RunningBalance {
         let ledger_file = ledger::File::global(cx);
         subscriptions.push(
             // observe ledger file transactions and recalculate running balance
-            cx.observe(&ledger_file, |this, _ledger_file, cx| {
-                match ledger::File::transactions(cx) {
-                    Ok(txs) => {
-                        let data = Self::calculate(txs);
-                        this.data = data;
-                        cx.notify();
-                    }
-                    Err(_) => {
-                        this.data.clear();
-                        cx.notify();
-                    }
+            cx.observe(&ledger_file, |this, ledger_file, cx| {
+                this.data = match ledger_file.read(cx).state.as_ref() {
+                    Ok(state) => calculate(&state.transactions),
+                    Err(_) => HashMap::new(),
                 };
+                cx.notify();
             }),
         );
 
@@ -50,36 +44,6 @@ impl RunningBalance {
             data: HashMap::new(),
             _subscriptions: subscriptions,
         }
-    }
-
-    fn calculate(
-        transactions: &[ledger::Transaction],
-    ) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
-        let mut data: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
-        for transaction in transactions.iter() {
-            let date = transaction.date.clone();
-            for posting in &transaction.postings {
-                let account = posting.account.clone();
-                let amount = posting.amount.value.clone();
-
-                let account_balances = data.entry(account).or_insert_with(BTreeMap::new);
-
-                if let Some(balance) = account_balances.get_mut(&date) {
-                    balance.add_amount(amount);
-                } else {
-                    let previous_balance = account_balances
-                        .range(..date)
-                        .next_back()
-                        .map(|(_, b)| b.clone())
-                        .unwrap_or_else(Balance::new);
-                    let mut new_balance = previous_balance;
-                    new_balance.add_amount(amount);
-                    account_balances.insert(date, new_balance);
-                }
-            }
-        }
-
-        data
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Account, &BTreeMap<chrono::NaiveDate, Balance>)> {
@@ -94,4 +58,34 @@ impl RunningBalance {
         }
         Balance::new()
     }
+}
+
+fn calculate(
+    transactions: &[ledger::Transaction],
+) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
+    let mut data: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
+    for transaction in transactions.iter() {
+        let date = transaction.date.clone();
+        for posting in &transaction.postings {
+            let account = posting.account.clone();
+            let amount = posting.amount.value.clone();
+
+            let account_balances = data.entry(account).or_insert_with(BTreeMap::new);
+
+            if let Some(balance) = account_balances.get_mut(&date) {
+                balance.add_amount(amount);
+            } else {
+                let previous_balance = account_balances
+                    .range(..date)
+                    .next_back()
+                    .map(|(_, b)| b.clone())
+                    .unwrap_or_else(Balance::new);
+                let mut new_balance = previous_balance;
+                new_balance.add_amount(amount);
+                account_balances.insert(date, new_balance);
+            }
+        }
+    }
+
+    data
 }

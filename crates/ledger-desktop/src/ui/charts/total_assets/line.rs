@@ -6,9 +6,10 @@ use gpui::{prelude::*, Subscription};
 use ledger::Balance;
 
 use crate::data::currency_converter::CurrencyConverter;
+use crate::util::observe_multiple;
 use state::AppState;
 
-use crate::data::total_assets::{self, TotalAssets};
+use crate::data::total_assets::TotalAssets;
 use crate::ui::components::line_chart::LineChart;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
@@ -22,62 +23,76 @@ pub struct Chart {
 
 impl Chart {
     fn new(cx: &mut Context<Self>) -> Self {
-        let total_assets = TotalAssets::global(cx);
         let mut subscriptions = vec![];
         subscriptions.push(
             // observe total assets changes and refresh chart data
-            cx.observe(&total_assets, |this, _total_assets, cx| {
-                this.refresh_data(cx);
-            }),
+            observe_multiple(
+                cx,
+                (
+                    &TotalAssets::global(cx),
+                    &AppState::global(cx),
+                    &CurrencyConverter::global(cx),
+                ),
+                |this, cx| {
+                    let total_assets = TotalAssets::global(cx);
+                    let app_state = AppState::global(cx);
+                    let converter = CurrencyConverter::global(cx);
+                    this.chart.update(cx, |this, cx| {
+                        let app_state = app_state.read(cx);
+                        let (dates, values) = calculate(
+                            &total_assets.read(cx),
+                            app_state.values.get_period_interval(),
+                            &converter.read(cx),
+                            app_state.values.commodity.as_deref(),
+                        );
+                        this.refresh_data(&dates, values, cx);
+                    });
+                    cx.notify();
+                },
+            ),
         );
         Self {
             chart: cx.new(|cx| LineChart::new(cx)),
             _subscriptions: subscriptions,
         }
     }
+}
 
-    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let total_assets = total_assets::TotalAssets::global(cx);
-        let total_assets = total_assets.read(cx);
+fn calculate(
+    total_assets: &TotalAssets,
+    (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
+    converter: &CurrencyConverter,
+    target_commodity: Option<&str>,
+) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
+    let mut plot_dates = Vec::new();
+    let mut plot_balances = Vec::new();
 
-        let (min_date, max_date) = AppState::get_period_interval(cx);
+    // Iterate through each day in the filtered range
+    let mut current_date = min_date;
+    while current_date <= max_date {
+        // Find the balance for this date (or the most recent one before it)
+        let balance = total_assets
+            .iter()
+            .filter(|(d, _)| **d <= current_date)
+            .last()
+            .map(|(_, b)| b.clone())
+            .unwrap_or_else(Balance::new);
 
-        let converter = CurrencyConverter::global(cx).read(cx);
-        let target_commodity = AppState::get_commodity(cx);
+        let balance = if let Some(target_commodity) = &target_commodity {
+            converter.convert_balance(&balance, &target_commodity, current_date)
+        } else {
+            balance
+        };
 
-        let mut plot_dates = Vec::new();
-        let mut plot_balances = Vec::new();
+        plot_dates.push(current_date);
+        plot_balances.push(balance);
 
-        // Iterate through each day in the filtered range
-        let mut current_date = min_date;
-        while current_date <= max_date {
-            // Find the balance for this date (or the most recent one before it)
-            let balance = total_assets
-                .iter()
-                .filter(|(d, _)| **d <= current_date)
-                .last()
-                .map(|(_, b)| b.clone())
-                .unwrap_or_else(Balance::new);
-
-            let balance = if let Some(target_commodity) = &target_commodity {
-                converter.convert_balance(&balance, &target_commodity, current_date)
-            } else {
-                balance
-            };
-
-            plot_dates.push(current_date);
-            plot_balances.push(balance);
-
-            current_date += chrono::Duration::days(1);
-        }
-
-        // Convert Balance data to HashMap<String, Vec<Option<f64>>> format
-        let values = convert_balances_to_values(&plot_balances);
-
-        self.chart.update(cx, |chart, cx| {
-            chart.refresh_data(&plot_dates, values, cx);
-        });
+        current_date += chrono::Duration::days(1);
     }
+
+    // Convert Balance data to HashMap<String, Vec<Option<f64>>> format
+    let values = convert_balances_to_values(&plot_balances);
+    (plot_dates, values)
 }
 
 fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Option<f64>>> {

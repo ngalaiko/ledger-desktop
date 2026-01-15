@@ -10,7 +10,7 @@ use gpui_component::{
     resizable::{h_resizable, resizable_panel},
     v_flex, StyledExt, TitleBar,
 };
-use state::{period::Period, AppState};
+use state::period::Period;
 
 use self::components::{commodity_selector, period_selector};
 use self::transactions_register::RegisterView;
@@ -27,7 +27,6 @@ pub struct Window {
     period_selector: Entity<period_selector::PeriodSelector>,
     period_toggle: Entity<period_toggle::PeriodToggle>,
     commodity_selector: Entity<commodity_selector::CommoditySelector>,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl Window {
@@ -36,28 +35,6 @@ impl Window {
         let register_view = transactions_register::init(window, cx);
         let total_assets = charts::total_assets::init(cx);
 
-        let mut subscriptions = vec![];
-        subscriptions.push(
-            // observe state changes and update views accordingly
-            cx.observe(&AppState::global(cx), move |this, _app_state, _cx| {
-                this.register_view.update(_cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-            }),
-        );
-
-        subscriptions.push(
-            // observe ledger file changes and update views accordingly
-            cx.observe(&ledger::File::global(cx), |this, _file, cx| {
-                this.accounts_tree.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-                this.register_view.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-            }),
-        );
-
         Self {
             total_assets,
             accounts_tree,
@@ -65,7 +42,6 @@ impl Window {
             period_selector: period_selector::init(cx),
             period_toggle: period_toggle::init(cx),
             commodity_selector: commodity_selector::init(cx),
-            _subscriptions: subscriptions,
         }
     }
 }

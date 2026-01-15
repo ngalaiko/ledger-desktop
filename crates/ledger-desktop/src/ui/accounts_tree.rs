@@ -8,7 +8,7 @@ use gpui_component::{
     tree::{tree, TreeItem, TreeState},
 };
 
-use crate::icons::IconName;
+use crate::{icons::IconName, util::observe_multiple};
 use ledger::{Account, TreeNode};
 use state::AppState;
 
@@ -20,23 +20,36 @@ pub fn init(cx: &mut App) -> Entity<AccountsTreeView> {
 
 pub struct AccountsTreeView {
     tree_state: Entity<TreeState>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl AccountsTreeView {
     fn new(cx: &mut Context<Self>) -> Self {
         let tree_state = cx.new(|cx| TreeState::new(cx));
 
-        Self { tree_state }
-    }
+        let mut subscriptions = vec![];
+        subscriptions.push(observe_multiple(
+            cx,
+            (&ledger::File::global(cx), &AppState::global(cx)),
+            |this, cx| {
+                let tree_items = match ledger::File::accounts(cx) {
+                    Ok(accounts) => {
+                        let expanded_accounts = AppState::get_expanded_accounts(cx);
+                        build_items(&accounts, &expanded_accounts)
+                    }
+                    Err(_) => vec![],
+                };
+                this.tree_state.update(cx, |tree_state, cx| {
+                    tree_state.set_items(tree_items, cx);
+                    cx.notify();
+                });
+            },
+        ));
 
-    pub fn refresh_data(&mut self, cx: &mut Context<Self>) {
-        let accounts = ledger::File::accounts(cx).expect("todo");
-        let expanded_accounts = AppState::get_expanded_accounts(cx);
-        let tree_items = build_items(accounts, &expanded_accounts);
-        self.tree_state.update(cx, |tree_state, cx| {
-            tree_state.set_items(tree_items, cx);
-            cx.notify();
-        });
+        Self {
+            tree_state,
+            _subscriptions: subscriptions,
+        }
     }
 
     /// Calculate the checkbox state for a node based on its children

@@ -1,8 +1,7 @@
-use gpui::{div, prelude::*, App, Subscription};
+use gpui::{div, prelude::*, App};
 use gpui::{Entity, IntoElement, Render};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{h_flex, v_flex};
-use state::AppState;
 
 use crate::icons::IconName;
 
@@ -16,38 +15,13 @@ pub fn init(cx: &mut App) -> Entity<TotalAssets> {
 pub struct TotalAssets {
     line: Entity<line::Chart>,
     pie: Entity<pie::Chart>,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl TotalAssets {
     fn new(cx: &mut Context<Self>) -> Self {
-        let mut subscriptions = vec![];
-        subscriptions.push(
-            // observe state changes and update views accordingly
-            cx.observe(&AppState::global(cx), move |this, _app_state, cx| {
-                this.line.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-                this.pie.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-            }),
-        );
-        subscriptions.push(
-            // observe ledger file changes and update views accordingly
-            cx.observe(&ledger::File::global(cx), move |this, _file, cx| {
-                this.line.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-                this.pie.update(cx, |this, cx| {
-                    this.refresh_data(cx);
-                });
-            }),
-        );
         Self {
             line: line::init(cx),
             pie: pie::init(cx),
-            _subscriptions: subscriptions,
         }
     }
 }

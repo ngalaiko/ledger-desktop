@@ -18,12 +18,12 @@ macro_rules! setting_accessors {
             $(
                 paste::paste! {
                     pub fn [<get_ $field>](cx: &App) -> $type {
-                        Self::global(cx).read(cx).state_values.$field.clone()
+                        Self::global(cx).read(cx).values.$field.clone()
                     }
 
                     pub fn [<update_ $field>](value: $type, cx: &mut App) {
                         Self::global(cx).update(cx, |this, cx| {
-                            this.state_values.$field = value;
+                            this.values.$field = value;
                             cx.notify();
                         });
                     }
@@ -56,6 +56,52 @@ pub struct State {
     pub selected_total_assets_tab_idx: usize,
 }
 
+impl State {
+    pub fn get_period_interval(&self) -> (chrono::NaiveDate, chrono::NaiveDate) {
+        let today_date = chrono::Local::now().date_naive();
+        let interval_end = match self.period {
+            Period::Week => {
+                let end_of_week = today_date
+                    - chrono::Duration::days(today_date.weekday().num_days_from_monday() as i64)
+                    - chrono::Duration::weeks(self.period_idx as i64);
+                end_of_week
+            }
+            Period::Month => {
+                let mut year = today_date.year();
+                let mut month = today_date.month() as i32 - self.period_idx as i32;
+                while month <= 0 {
+                    month += 12;
+                    year -= 1;
+                }
+                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
+                    .unwrap()
+                    .checked_sub_signed(chrono::Duration::days(1))
+                    .expect("valid date")
+            }
+            Period::Year => {
+                let year = today_date.year() - self.period_idx as i32;
+                chrono::NaiveDate::from_ymd_opt(year, 12, 31).expect("valid date")
+            }
+        };
+        let interval_start = match self.period {
+            Period::Week => interval_end + chrono::Duration::days(1) - chrono::Duration::weeks(1),
+            Period::Month => {
+                let mut year = interval_end.year();
+                let mut month = interval_end.month() as i32;
+                while month <= 1 {
+                    month += 12;
+                    year -= 1;
+                }
+                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1).expect("valid date")
+            }
+            Period::Year => {
+                chrono::NaiveDate::from_ymd_opt(interval_end.year(), 1, 1).expect("valid date")
+            }
+        };
+        (interval_start, interval_end)
+    }
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {
@@ -81,7 +127,7 @@ struct GlobalAppState(Entity<AppState>);
 impl Global for GlobalAppState {}
 
 pub struct AppState {
-    state_values: State,
+    pub values: State,
     _subscriptions: Vec<Subscription>,
     _tasks: Vec<Task<()>>,
 }
@@ -113,7 +159,7 @@ impl AppState {
             cx.spawn(async move |this, cx| {
                 if let Ok(state) = load_state.await {
                     this.update(cx, |this, cx| {
-                        this.state_values = state;
+                        this.values = state;
                         cx.notify();
                     })
                     .ok();
@@ -122,14 +168,14 @@ impl AppState {
         );
 
         Self {
-            state_values: State::default(),
+            values: State::default(),
             _subscriptions: subscriptions,
             _tasks: tasks,
         }
     }
 
     fn save_state(&self, cx: &App) {
-        if let Ok(state) = serde_json::to_vec(&self.state_values) {
+        if let Ok(state) = serde_json::to_vec(&self.values) {
             let task: Task<Result<(), Error>> = cx.background_spawn(async move {
                 let config_dir =
                     dirs::config_dir().ok_or(anyhow!("could not determine config directory"))?;
@@ -167,68 +213,26 @@ impl AppState {
     }
 
     pub fn get_period_interval(cx: &App) -> (chrono::NaiveDate, chrono::NaiveDate) {
-        let period = Self::global(cx).read(cx).state_values.period;
-        let period_idx = Self::global(cx).read(cx).state_values.period_idx;
-        let today_date = chrono::Local::now().date_naive();
-        let interval_end = match period {
-            Period::Week => {
-                let end_of_week = today_date
-                    - chrono::Duration::days(today_date.weekday().num_days_from_monday() as i64)
-                    - chrono::Duration::weeks(period_idx as i64);
-                end_of_week
-            }
-            Period::Month => {
-                let mut year = today_date.year();
-                let mut month = today_date.month() as i32 - period_idx as i32;
-                while month <= 0 {
-                    month += 12;
-                    year -= 1;
-                }
-                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
-                    .unwrap()
-                    .checked_sub_signed(chrono::Duration::days(1))
-                    .expect("valid date")
-            }
-            Period::Year => {
-                let year = today_date.year() - period_idx as i32;
-                chrono::NaiveDate::from_ymd_opt(year, 12, 31).expect("valid date")
-            }
-        };
-        let interval_start = match period {
-            Period::Week => interval_end + chrono::Duration::days(1) - chrono::Duration::weeks(1),
-            Period::Month => {
-                let mut year = interval_end.year();
-                let mut month = interval_end.month() as i32;
-                while month <= 1 {
-                    month += 12;
-                    year -= 1;
-                }
-                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1).expect("valid date")
-            }
-            Period::Year => {
-                chrono::NaiveDate::from_ymd_opt(interval_end.year(), 1, 1).expect("valid date")
-            }
-        };
-        (interval_start, interval_end)
+        Self::global(cx).read(cx).values.get_period_interval()
     }
 
     pub fn update_period_today(cx: &mut App) {
         Self::global(cx).update(cx, |this, cx| {
-            this.state_values.period_idx = 0;
+            this.values.period_idx = 0;
             cx.notify();
         });
     }
 
     pub fn update_period_next(cx: &mut App) {
         Self::global(cx).update(cx, |this, cx| {
-            this.state_values.period_idx -= 1;
+            this.values.period_idx -= 1;
             cx.notify();
         });
     }
 
     pub fn update_period_prev(cx: &mut App) {
         Self::global(cx).update(cx, |this, cx| {
-            this.state_values.period_idx += 1;
+            this.values.period_idx += 1;
             cx.notify();
         });
     }

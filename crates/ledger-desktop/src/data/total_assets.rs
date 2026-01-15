@@ -36,7 +36,7 @@ impl TotalAssets {
             // observe running balance changes and recalculate total assets
             cx.observe(&running_balance, |this, running_balance, cx| {
                 let running_balance = running_balance.read(cx);
-                let data = Self::calculate(running_balance);
+                let data = calculate(running_balance);
                 this.data = data;
                 cx.notify();
             }),
@@ -51,45 +51,45 @@ impl TotalAssets {
     pub fn iter(&self) -> impl Iterator<Item = (&chrono::NaiveDate, &Balance)> {
         self.data.iter()
     }
+}
 
-    fn calculate(running_balance: &RunningBalance) -> BTreeMap<chrono::NaiveDate, Balance> {
-        let accounts = running_balance
-            .iter()
-            .filter_map(|(account, _)| match account.type_of {
-                ledger::AccountType::Assets | ledger::AccountType::Liabilities => Some(account),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let all_dates = running_balance
-            .iter()
-            .filter(|(account, _)| {
-                matches!(
-                    account.type_of,
-                    ledger::AccountType::Assets | ledger::AccountType::Liabilities
-                )
-            })
-            .flat_map(|(_, date_balances)| date_balances.keys())
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>();
+fn calculate(running_balance: &RunningBalance) -> BTreeMap<chrono::NaiveDate, Balance> {
+    let accounts = running_balance
+        .iter()
+        .filter_map(|(account, _)| match account.type_of {
+            ledger::AccountType::Assets | ledger::AccountType::Liabilities => Some(account),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let all_dates = running_balance
+        .iter()
+        .filter(|(account, _)| {
+            matches!(
+                account.type_of,
+                ledger::AccountType::Assets | ledger::AccountType::Liabilities
+            )
+        })
+        .flat_map(|(_, date_balances)| date_balances.keys())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
 
-        if all_dates.is_empty() {
-            return BTreeMap::new();
-        }
-
-        let min_date = *all_dates.first().expect("at least one date exists");
-        let max_date = *all_dates.last().expect("at least one date exists");
-
-        let mut total_assets: BTreeMap<chrono::NaiveDate, Balance> = BTreeMap::new();
-        let mut current_date = min_date;
-        while current_date <= max_date {
-            let mut total_balance = Balance::new();
-            for account in &accounts {
-                let balance = running_balance.get_balance(account, current_date);
-                total_balance.add(&balance);
-            }
-            total_assets.insert(current_date, total_balance);
-            current_date += chrono::Duration::days(1);
-        }
-        total_assets
+    if all_dates.is_empty() {
+        return BTreeMap::new();
     }
+
+    let min_date = *all_dates.first().expect("at least one date exists");
+    let max_date = *all_dates.last().expect("at least one date exists");
+
+    let mut total_assets: BTreeMap<chrono::NaiveDate, Balance> = BTreeMap::new();
+    let mut current_date = min_date;
+    while current_date <= max_date {
+        let mut total_balance = Balance::new();
+        for account in &accounts {
+            let balance = running_balance.get_balance(account, current_date);
+            total_balance.add(&balance);
+        }
+        total_assets.insert(current_date, total_balance);
+        current_date += chrono::Duration::days(1);
+    }
+    total_assets
 }
