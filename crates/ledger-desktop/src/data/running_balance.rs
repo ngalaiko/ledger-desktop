@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use gpui::{App, AppContext, Context, Entity, Global, Subscription};
 use ledger::{Account, Balance};
 
+use super::transactions::Transactions;
+
 pub fn init(cx: &mut App) {
     RunningBalance::set_global(cx.new(|cx| RunningBalance::new(cx)), cx);
 }
@@ -28,17 +30,11 @@ impl RunningBalance {
     fn new(cx: &mut Context<Self>) -> Self {
         let mut subscriptions = vec![];
 
-        let ledger_file = ledger::File::global(cx);
-        subscriptions.push(
-            // observe ledger file transactions and recalculate running balance
-            cx.observe(&ledger_file, |this, ledger_file, cx| {
-                this.data = match ledger_file.read(cx).state.as_ref() {
-                    Ok(state) => calculate(&state.transactions),
-                    Err(_) => HashMap::new(),
-                };
-                cx.notify();
-            }),
-        );
+        let transactions = Transactions::global(cx);
+        subscriptions.push(cx.observe(&transactions, |this, transactions, cx| {
+            this.data = calculate(transactions.read(cx).as_slice());
+            cx.notify();
+        }));
 
         Self {
             data: HashMap::new(),

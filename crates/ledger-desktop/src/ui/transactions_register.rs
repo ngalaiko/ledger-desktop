@@ -8,9 +8,12 @@ use gpui_component::{
 };
 use state::AppState;
 
-use ledger::{Account, Amount, Posting, Transaction};
+use ledger::{Account, Transaction};
 
-use crate::{data::currency_converter::CurrencyConverter, util::observe_multiple};
+use crate::{
+    data::{currency_converter::CurrencyConverter, transactions::convert_transaction},
+    util::observe_multiple,
+};
 
 pub fn init(window: &mut Window, cx: &mut App) -> Entity<RegisterView> {
     cx.new(|cx| RegisterView::new(window, cx))
@@ -96,44 +99,6 @@ fn filter_map_visible_transaction(
             postings: matching_postings.into_iter().cloned().collect(),
             ..transaction.clone()
         })
-    }
-}
-
-fn convert_transaction(
-    converter: &CurrencyConverter,
-    transaction: &Transaction,
-    target_commodity: Option<String>,
-) -> Transaction {
-    let Some(target_commodity) = target_commodity else {
-        // No conversion, return transaction as-is
-        return transaction.clone();
-    };
-
-    Transaction {
-        postings: transaction
-            .postings
-            .iter()
-            .map(|p| {
-                if let Some(converted_amount) = converter.convert_amount(
-                    &p.amount.value,
-                    target_commodity.as_str(),
-                    transaction.date,
-                ) {
-                    Posting {
-                        amount: Amount {
-                            value: converted_amount,
-                            cost: None,
-                            cost_date: None,
-                        },
-                        account: p.account.clone(),
-                        ..p.clone()
-                    }
-                } else {
-                    p.clone()
-                }
-            })
-            .collect(),
-        ..transaction.clone()
     }
 }
 

@@ -137,10 +137,7 @@ impl Render for PieChart {
             })
             // Tooltip on hover
             .when_some(hovered_data, |this, (label, value, color, percentage)| {
-                let position = if self
-                    .mouse_position
-                    .map(|p| p.x.as_f32())
-                    .unwrap_or(0.0)
+                let position = if self.mouse_position.map(|p| p.x.as_f32()).unwrap_or(0.0)
                     < self
                         .plot_inner
                         .bounds

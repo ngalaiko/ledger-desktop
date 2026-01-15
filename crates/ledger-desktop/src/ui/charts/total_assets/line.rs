@@ -5,7 +5,6 @@ use gpui::{prelude::*, Subscription};
 
 use ledger::Balance;
 
-use crate::data::currency_converter::CurrencyConverter;
 use crate::util::observe_multiple;
 use state::AppState;
 
@@ -28,22 +27,15 @@ impl Chart {
             // observe total assets changes and refresh chart data
             observe_multiple(
                 cx,
-                (
-                    &TotalAssets::global(cx),
-                    &AppState::global(cx),
-                    &CurrencyConverter::global(cx),
-                ),
+                (&TotalAssets::global(cx), &AppState::global(cx)),
                 |this, cx| {
                     let total_assets = TotalAssets::global(cx);
                     let app_state = AppState::global(cx);
-                    let converter = CurrencyConverter::global(cx);
                     this.chart.update(cx, |this, cx| {
                         let app_state = app_state.read(cx);
                         let (dates, values) = calculate(
                             &total_assets.read(cx),
                             app_state.values.get_period_interval(),
-                            &converter.read(cx),
-                            app_state.values.commodity.as_deref(),
                         );
                         this.refresh_data(&dates, values, cx);
                     });
@@ -61,8 +53,6 @@ impl Chart {
 fn calculate(
     total_assets: &TotalAssets,
     (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
-    converter: &CurrencyConverter,
-    target_commodity: Option<&str>,
 ) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
     let mut plot_dates = Vec::new();
     let mut plot_balances = Vec::new();
@@ -71,18 +61,13 @@ fn calculate(
     let mut current_date = min_date;
     while current_date <= max_date {
         // Find the balance for this date (or the most recent one before it)
+        // Balance is already converted to target commodity upstream
         let balance = total_assets
             .iter()
             .filter(|(d, _)| **d <= current_date)
             .last()
             .map(|(_, b)| b.clone())
             .unwrap_or_else(Balance::new);
-
-        let balance = if let Some(target_commodity) = &target_commodity {
-            converter.convert_balance(&balance, &target_commodity, current_date)
-        } else {
-            balance
-        };
 
         plot_dates.push(current_date);
         plot_balances.push(balance);

@@ -5,7 +5,6 @@ use gpui::{prelude::*, Subscription};
 
 use ledger::AccountType;
 
-use crate::data::currency_converter::CurrencyConverter;
 use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
 use state::AppState;
@@ -28,21 +27,15 @@ impl Chart {
             // observe running balance changes and refresh chart data
             observe_multiple(
                 cx,
-                (
-                    &RunningBalance::global(cx),
-                    &AppState::global(cx),
-                    &CurrencyConverter::global(cx),
-                ),
+                (&RunningBalance::global(cx), &AppState::global(cx)),
                 |this, cx| {
                     let running_balance = RunningBalance::global(cx);
                     let app_state = AppState::global(cx);
-                    let converter = CurrencyConverter::global(cx);
                     this.chart.update(cx, |this, cx| {
                         let app_state = app_state.read(cx);
                         let values = calculate(
                             &running_balance.read(cx),
                             app_state.values.get_period_interval(),
-                            &converter.read(cx),
                             app_state.values.commodity.as_deref(),
                         );
                         this.refresh_data(values, cx);
@@ -61,7 +54,6 @@ impl Chart {
 fn calculate(
     running_balance: &RunningBalance,
     (_from, max_date): (chrono::NaiveDate, chrono::NaiveDate),
-    converter: &CurrencyConverter,
     target_commodity: Option<&str>,
 ) -> HashMap<String, f64> {
     let Some(target_commodity) = target_commodity else {
@@ -80,20 +72,10 @@ fn calculate(
             continue;
         }
 
-        let balance = converter.convert_balance(
-            &running_balance.get_balance(account, max_date),
-            &target_commodity,
-            max_date,
-        );
+        let balance = running_balance.get_balance(account, max_date);
 
-        // Try to get the target commodity amount directly
-        let amount = if let Some(amount) = balance.get_amount(&target_commodity) {
-            Some(amount.clone())
-        } else {
-            None
-        };
-
-        if let Some(amount) = amount {
+        // Try to get the target commodity amount directly (already converted)
+        if let Some(amount) = balance.get_amount(target_commodity) {
             let value = amount.value.to_f64();
             if value > 0.0 {
                 // Use the full account path as the label
