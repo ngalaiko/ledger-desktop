@@ -2,6 +2,7 @@ mod assets;
 mod data;
 mod icons;
 mod ui;
+mod util;
 
 use gpui::prelude::*;
 use gpui::{
