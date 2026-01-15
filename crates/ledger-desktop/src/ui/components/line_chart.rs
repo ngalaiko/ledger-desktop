@@ -104,6 +104,13 @@ impl Render for LineChart {
                     cx.notify();
                 }
             }))
+            .on_hover(cx.listener(|this, hovered, _window, cx| {
+                if !hovered {
+                    this.mouse_position = None;
+                    this.hovered_idx = None;
+                    cx.notify();
+                }
+            }))
             .child(plot_inner)
             .when_some(tooltip_data, |this, tooltip_data| {
                 let mouse_x = tooltip_data.0.x.as_f32() - tooltip_data.1.origin.x.as_f32();
