@@ -7,6 +7,7 @@ use std::{
 };
 
 const HALF_PI: f32 = PI / 2.0;
+const SQRT_2: f32 = 1.41421356;
 /// Inner radius as a fraction of outer radius (0.5 = donut with hole half the size)
 const INNER_RADIUS_RATIO: f32 = 0.8;
 
@@ -17,6 +18,7 @@ use gpui_component::{
     h_flex,
     plot::{
         shape::{Arc, Pie},
+        tooltip::{Tooltip, TooltipPosition},
         IntoPlot, Plot,
     },
     ActiveTheme, PixelsExt, StyledExt,
@@ -66,6 +68,19 @@ impl Render for PieChart {
             }
         };
 
+        // Get hovered data if mouse is over a segment
+        let hovered_data = tooltip_data.and_then(|(mouse_pos, bounds)| {
+            let idx = self.plot_inner.get_hovered_index(mouse_pos, &bounds)?;
+            let (label, value) = self.plot_inner.data.get(idx)?;
+            let color = get_color(&self.colors, label);
+            let percentage = if self.plot_inner.total > 0.0 {
+                (*value / self.plot_inner.total) * 100.0
+            } else {
+                0.0
+            };
+            Some((label.clone(), *value, color, percentage))
+        });
+
         div()
             .id("pie_chart")
             .size_full()
@@ -87,27 +102,17 @@ impl Render for PieChart {
                     cx.notify();
                 }
             }))
-            .child(plot_inner)
-            .when_some(tooltip_data, |this, (mouse_pos, bounds)| {
-                let hovered_idx = self.plot_inner.get_hovered_index(mouse_pos, &bounds);
-
-                let Some(hovered_idx) = hovered_idx else {
+            .child(plot_inner.clone())
+            // Center total display
+            .when_some(plot_inner.bounds.get(), |this, bounds| {
+                if plot_inner.data.is_empty() {
                     return this;
-                };
+                }
 
-                let Some((label, value)) = self.plot_inner.data.get(hovered_idx) else {
-                    return this;
-                };
-
-                let color = get_color(&self.colors, label);
-                let percentage = if self.plot_inner.total > 0.0 {
-                    (*value / self.plot_inner.total) * 100.0
-                } else {
-                    0.0
-                };
+                let inner_radius = bounds.size.height.as_f32() * 0.4 * INNER_RADIUS_RATIO;
+                let square_side = px(inner_radius * SQRT_2);
 
                 this.child(
-                    // full overlay div for centering
                     div()
                         .absolute()
                         .w(bounds.size.width)
@@ -119,33 +124,62 @@ impl Render for PieChart {
                         .items_center()
                         .child(
                             div()
+                                .w(square_side)
+                                .h(square_side)
+                                .overflow_hidden()
                                 .flex()
                                 .flex_col()
                                 .items_center()
-                                .child(
-                                    h_flex()
-                                        .gap_1()
-                                        .items_center()
-                                        .child(div().text_xs().text_color(color).child("●"))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_medium()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(label.to_string()),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .text_lg()
-                                        .font_semibold()
-                                        .child(format!("{:.2}", value)),
-                                )
+                                .justify_center()
+                                .child(div().text_lg().child(format!("{:.2}", plot_inner.total))),
+                        ),
+                )
+            })
+            // Tooltip on hover
+            .when_some(hovered_data, |this, (label, value, color, percentage)| {
+                let position = if self
+                    .mouse_position
+                    .map(|p| p.x.as_f32())
+                    .unwrap_or(0.0)
+                    < self
+                        .plot_inner
+                        .bounds
+                        .get()
+                        .map(|b| b.size.width.as_f32() / 2.0)
+                        .unwrap_or(0.0)
+                {
+                    TooltipPosition::Right
+                } else {
+                    TooltipPosition::Left
+                };
+
+                this.child(
+                    Tooltip::new()
+                        .position(position)
+                        .gap(px(20.0))
+                        .p_3()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().background)
+                        .rounded_lg()
+                        .shadow_lg()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(div().text_xs().text_color(color).child("●"))
+                                .child(div().text_sm().font_semibold().child(label)),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .text_sm()
+                                .child(format!("{:.2}", value))
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child(format!("{:.1}%", percentage)),
+                                        .child(format!("({:.1}%)", percentage)),
                                 ),
                         ),
                 )
