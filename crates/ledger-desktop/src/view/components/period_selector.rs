@@ -7,7 +7,7 @@ use gpui_component::button::ButtonVariants;
 use gpui_component::h_flex;
 use gpui_component::Disableable;
 
-use crate::icons::IconName;
+use ui::icons::IconName;
 
 pub fn init(cx: &mut App) -> Entity<PeriodSelector> {
     cx.new(|cx| PeriodSelector::new(cx))

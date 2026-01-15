@@ -16,7 +16,6 @@ serde.workspace = true
 schemars.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
-rust-embed = "8.9.0"
 
 [lints]
 workspace = true

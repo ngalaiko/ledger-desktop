@@ -3,7 +3,7 @@ use gpui::{Entity, IntoElement, Render};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{h_flex, v_flex};
 
-use crate::icons::IconName;
+use ui::icons::IconName;
 
 mod line;
 mod pie;

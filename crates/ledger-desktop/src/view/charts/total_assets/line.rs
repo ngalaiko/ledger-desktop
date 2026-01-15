@@ -9,7 +9,7 @@ use crate::util::observe_multiple;
 use state::AppState;
 
 use crate::data::total_assets::TotalAssets;
-use crate::ui::components::line_chart::LineChart;
+use crate::view::components::line_chart::LineChart;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
     cx.new(|cx| Chart::new(cx))

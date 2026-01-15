@@ -9,7 +9,7 @@ use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
 use state::AppState;
 
-use crate::ui::components::pie_chart::PieChart;
+use crate::view::components::pie_chart::PieChart;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
     cx.new(|cx| Chart::new(cx))

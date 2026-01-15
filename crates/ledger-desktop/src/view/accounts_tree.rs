@@ -8,11 +8,12 @@ use gpui_component::{
     tree::{tree, TreeItem, TreeState},
 };
 
-use crate::{icons::IconName, util::observe_multiple};
 use ledger::{Account, TreeNode};
 use state::AppState;
-
 use ui::checkbox::{Checkbox, CheckboxState};
+use ui::icons::IconName;
+
+use crate::util::observe_multiple;
 
 pub fn init(cx: &mut App) -> Entity<AccountsTreeView> {
     cx.new(|cx| AccountsTreeView::new(cx))

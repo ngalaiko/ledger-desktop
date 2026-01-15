@@ -1,8 +1,6 @@
-mod assets;
 mod data;
-mod icons;
-mod ui;
 mod util;
+mod view;
 
 use gpui::prelude::*;
 use gpui::{
@@ -11,7 +9,7 @@ use gpui::{
 };
 use gpui_component::Root;
 
-use self::assets::Assets;
+use ui::assets::Assets;
 
 fn main() {
     Application::new().with_assets(Assets).run(move |cx| {
@@ -40,7 +38,7 @@ fn main() {
                 ledger::init::<&str>(None, cx);
                 data::init(cx);
 
-                Root::new(ui::init(window, cx), window, cx)
+                Root::new(view::init(window, cx), window, cx)
             })
         })
         .ok();
