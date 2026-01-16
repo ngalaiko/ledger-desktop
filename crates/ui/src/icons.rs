@@ -23,7 +23,7 @@ pub enum IconName {
     ChartLine,
     ChevronRight,
     ChevronDown,
-    Dash,
+    Minus,
     Check,
 }
 
@@ -43,7 +43,7 @@ impl IconNamed for IconName {
             Self::ChartLine => "icons/chart-line.svg",
             Self::ChevronDown => "icons/chevron-down.svg",
             Self::ChevronRight => "icons/chevron-right.svg",
-            Self::Dash => "icons/dash.svg",
+            Self::Minus => "icons/dash.svg",
             Self::Check => "icons/check.svg",
         }
         .into()

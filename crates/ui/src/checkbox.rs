@@ -241,7 +241,7 @@ pub(crate) fn checkbox_check_icon(
         .text_color(color)
         .map(|this| match state {
             CheckboxState::Checked => this.path(IconName::Check.path()),
-            CheckboxState::Indeterminate => this.path(IconName::Dash.path()),
+            CheckboxState::Indeterminate => this.path(IconName::Minus.path()),
             CheckboxState::Unchecked => this,
         })
         .map(|this| {
