@@ -21,6 +21,8 @@ pub fn init(window: &mut gpui::Window, cx: &mut App) -> Entity<Window> {
 }
 
 pub struct Window {
+    revenue: Entity<charts::revenue::Revenue>,
+    expenses: Entity<charts::expenses::Expenses>,
     total_assets: Entity<charts::total_assets::TotalAssets>,
     register_view: Entity<RegisterView>,
     accounts_tree: Entity<AccountsTreeView>,
@@ -34,8 +36,12 @@ impl Window {
         let accounts_tree = accounts_tree::init(cx);
         let register_view = transactions_register::init(window, cx);
         let total_assets = charts::total_assets::init(cx);
+        let revenue = charts::revenue::init(cx);
+        let expenses = charts::expenses::init(cx);
 
         Self {
+            revenue,
+            expenses,
             total_assets,
             accounts_tree,
             register_view,
@@ -87,6 +93,8 @@ impl Render for Window {
                                             ))
                                             .child(Entity::clone(&self.period_selector)),
                                     )
+                                    .child(Entity::clone(&self.revenue))
+                                    .child(Entity::clone(&self.expenses))
                                     .child(Entity::clone(&self.total_assets))
                                     .child(Entity::clone(&self.register_view)),
                             ),

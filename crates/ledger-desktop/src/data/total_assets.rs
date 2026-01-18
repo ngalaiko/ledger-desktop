@@ -58,7 +58,9 @@ fn calculate(running_balance: &RunningBalance) -> BTreeMap<chrono::NaiveDate, Ba
         .iter()
         .filter_map(|(account, _)| match account.type_of {
             ledger::AccountType::Assets | ledger::AccountType::Liabilities => Some(account),
-            ledger::AccountType::Unknown => None,
+            ledger::AccountType::Unknown
+            | ledger::AccountType::Expenses
+            | ledger::AccountType::Revenue => None,
         })
         .collect::<Vec<_>>();
     let all_dates = running_balance

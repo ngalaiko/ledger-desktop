@@ -16,6 +16,8 @@ pub enum AccountType {
     Unknown,
     Assets,
     Liabilities,
+    Expenses,
+    Revenue,
 }
 
 impl serde::Serialize for Account {
@@ -63,6 +65,8 @@ impl Account {
             match segments[0].to_lowercase().as_str() {
                 "assets" => AccountType::Assets,
                 "liabilities" => AccountType::Liabilities,
+                "expenses" => AccountType::Expenses,
+                "revenue" | "income" => AccountType::Revenue,
                 _ => AccountType::Unknown,
             }
         };

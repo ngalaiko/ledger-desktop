@@ -40,6 +40,8 @@ setting_accessors! {
     pub period: Period,
     pub period_idx: usize,
     pub selected_total_assets_tab_idx: usize,
+    pub selected_expenses_tab_idx: usize,
+    pub selected_revenue_tab_idx: usize,
 }
 
 static CURRENT_VERSION: &str = "1.0";
@@ -54,6 +56,10 @@ pub struct State {
     // index of the current period. 0 = current, 1 = previous, 2 = two periods ago, etc.
     pub period_idx: usize,
     pub selected_total_assets_tab_idx: usize,
+    #[serde(default)]
+    pub selected_expenses_tab_idx: usize,
+    #[serde(default)]
+    pub selected_revenue_tab_idx: usize,
 }
 
 impl State {
@@ -111,6 +117,8 @@ impl Default for State {
             period: Period::Month,
             period_idx: 0,
             selected_total_assets_tab_idx: 0,
+            selected_expenses_tab_idx: 0,
+            selected_revenue_tab_idx: 0,
         }
     }
 }
