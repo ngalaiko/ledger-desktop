@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use fastnum::D128;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
@@ -76,11 +77,11 @@ fn calculate(
     }
 
     // Negate values since revenue is negative in ledger
-    let values = convert_balances_to_values(&plot_balances, true);
+    let values = convert_balances_to_values(&plot_balances);
     (plot_dates, values)
 }
 
-fn convert_balances_to_values(balances: &[Balance], negate: bool) -> HashMap<String, Vec<Option<f64>>> {
+fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Option<f64>>> {
     let mut all_commodities = std::collections::HashSet::new();
     for balance in balances {
         for amount in balance.iter() {
@@ -88,16 +89,14 @@ fn convert_balances_to_values(balances: &[Balance], negate: bool) -> HashMap<Str
         }
     }
 
-    let multiplier = if negate { -1.0 } else { 1.0 };
-
     let mut values: HashMap<String, Vec<Option<f64>>> = HashMap::new();
     for commodity in all_commodities {
         let commodity_values: Vec<Option<f64>> = balances
             .iter()
             .map(|balance| {
-                balance
-                    .get_amount(&commodity)
-                    .map(|amount| amount.value.to_f64() * multiplier)
+                let amount = balance.get_amount(&commodity);
+                let value = amount.map(|a| a.value.clone()).unwrap_or(D128::ZERO);
+                Some(-value.to_f64())
             })
             .collect();
         values.insert(commodity, commodity_values);

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use fastnum::D128;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
@@ -92,9 +93,9 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
         let commodity_values: Vec<Option<f64>> = balances
             .iter()
             .map(|balance| {
-                balance
-                    .get_amount(&commodity)
-                    .map(|amount| amount.value.to_f64())
+                let amount = balance.get_amount(&commodity);
+                let value = amount.map(|a| a.value.clone()).unwrap_or(D128::ZERO);
+                Some(-value.to_f64())
             })
             .collect();
         values.insert(commodity, commodity_values);
