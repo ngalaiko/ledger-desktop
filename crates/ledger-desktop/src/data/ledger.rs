@@ -48,7 +48,7 @@ impl Ledger {
                     state
                         .files
                         .iter()
-                        .for_each(|path| println!("Loaded file: {:?}", path));
+                        .for_each(|path| println!("Loaded file: {}", path.display()));
                 }
             }),
         );

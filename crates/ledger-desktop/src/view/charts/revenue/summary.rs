@@ -88,6 +88,7 @@ fn calculate(
     result
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn format_value(value: f64) -> String {
     let abs_value = value.abs();
     if abs_value >= 1_000_000_000.0 {
@@ -95,11 +96,11 @@ fn format_value(value: f64) -> String {
     } else if abs_value >= 1_000_000.0 {
         format!("{:.1}M", value / 1_000_000.0)
     } else if abs_value >= 1_000.0 {
-        format!("{}", format_with_spaces(value as i64))
+        format_with_spaces(value as i64)
     } else if abs_value >= 1.0 {
-        format!("{:.0}", value)
+        format!("{value:.0}")
     } else {
-        format!("{:.2}", value)
+        format!("{value:.2}")
     }
 }
 

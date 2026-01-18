@@ -258,7 +258,7 @@ impl Render for Chart {
                                                     ),
                                             )
                                             .when_some(
-                                                diff_element.clone(),
+                                                diff_element,
                                                 |el, (indicator, diff_color, diff_val)| {
                                                     el.child(
                                                         h_flex()
@@ -277,7 +277,7 @@ impl Render for Chart {
                                             .gap_2()
                                             .text_xs()
                                             .justify_between()
-                                            .child(format!("{}", date.format("%b %-d")))
+                                            .child(date.format("%b %-d").to_string())
                                             .child(format_y_value(*current_value)),
                                     )
                                     // Previous period row (if available)
@@ -291,10 +291,9 @@ impl Render for Chart {
                                                         .text_xs()
                                                         .text_color(muted)
                                                         .justify_between()
-                                                        .child(format!(
-                                                            "{}",
-                                                            prev_date.format("%b %-d, %Y")
-                                                        ))
+                                                        .child(
+                                                            prev_date.format("%b %-d, %Y").to_string(),
+                                                        )
                                                         .child(format_y_value(*prev_val)),
                                                 )
                                             } else {
@@ -452,13 +451,14 @@ fn format_y_value(value: f64) -> String {
     } else if abs_value >= 1_000.0 {
         format!("{:.1}K", value / 1_000.0)
     } else if abs_value >= 1.0 {
-        format!("{:.0}", value)
+        format!("{value:.0}")
     } else {
-        format!("{:.2}", value)
+        format!("{value:.2}")
     }
 }
 
 /// Calculate the number of Y-axis labels based on available height
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn calc_y_label_count(bounds: &Bounds<Pixels>) -> usize {
     let height = calc_height(bounds);
     let max_labels = (height / ESTIMATED_Y_LABEL_HEIGHT).floor() as usize;
@@ -466,6 +466,11 @@ fn calc_y_label_count(bounds: &Bounds<Pixels>) -> usize {
 }
 
 impl Plot for PlotInner {
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         if self.dates.is_empty() {
             return;

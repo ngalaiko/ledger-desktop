@@ -20,7 +20,7 @@ pub fn init(cx: &mut App) -> Entity<Chart> {
 
 pub struct Chart {
     summary: Entity<summary::Summary>,
-    chart: Entity<line::Chart>,
+    inner: Entity<line::Chart>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -33,7 +33,7 @@ impl Chart {
             |this, cx| {
                 let daily_balance = DailyBalance::global(cx);
                 let app_state = AppState::global(cx);
-                this.chart.update(cx, |this, cx| {
+                this.inner.update(cx, |this, cx| {
                     let app_state = app_state.read(cx);
                     let daily_balance = daily_balance.read(cx);
 
@@ -60,7 +60,7 @@ impl Chart {
         ));
         Self {
             summary: summary::init(cx),
-            chart: cx.new(line::Chart::new),
+            inner: cx.new(line::Chart::new),
             _subscriptions: subscriptions,
         }
     }
@@ -151,7 +151,7 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
             .iter()
             .map(|balance| {
                 let amount = balance.get_amount(&commodity);
-                let value = amount.map(|a| a.value.clone()).unwrap_or(D128::ZERO);
+                let value = amount.map_or(D128::ZERO, |a| a.value);
                 Some(-value.to_f64())
             })
             .collect();
@@ -166,6 +166,6 @@ impl Render for Chart {
         v_flex()
             .size_full()
             .child(self.summary.clone())
-            .child(self.chart.clone())
+            .child(self.inner.clone())
     }
 }
