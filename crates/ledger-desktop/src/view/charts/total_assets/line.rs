@@ -7,7 +7,7 @@ use ledger::{AccountType, Balance};
 
 use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
-use crate::view::components::line_chart::LineChart;
+use crate::view::components::charts::line;
 use state::AppState;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
@@ -15,7 +15,7 @@ pub fn init(cx: &mut App) -> Entity<Chart> {
 }
 
 pub struct Chart {
-    chart: Entity<LineChart>,
+    chart: Entity<line::Chart>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -40,7 +40,7 @@ impl Chart {
             },
         ));
         Self {
-            chart: cx.new(LineChart::new),
+            chart: cx.new(line::Chart::new),
             _subscriptions: subscriptions,
         }
     }

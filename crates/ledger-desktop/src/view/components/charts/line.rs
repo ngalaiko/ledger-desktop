@@ -31,13 +31,13 @@ const MIN_TICK_SPACING: usize = 10;
 /// Number of Y-axis value labels to display
 const Y_AXIS_LABEL_COUNT: usize = 5;
 
-pub struct LineChart {
+pub struct Chart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
 }
 
-impl LineChart {
+impl Chart {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             plot_inner: PlotInner::new(),
@@ -57,7 +57,7 @@ impl LineChart {
     }
 }
 
-impl Render for LineChart {
+impl Render for Chart {
     #[allow(clippy::too_many_lines)]
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();

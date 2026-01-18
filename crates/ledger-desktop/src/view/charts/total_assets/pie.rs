@@ -4,19 +4,18 @@ use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
 use ledger::AccountType;
+use state::AppState;
 
 use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
-use state::AppState;
-
-use crate::view::components::pie_chart::PieChart;
+use crate::view::components::charts::pie;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
     cx.new(Chart::new)
 }
 
 pub struct Chart {
-    chart: Entity<PieChart>,
+    chart: Entity<pie::Chart>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -45,7 +44,7 @@ impl Chart {
             ),
         );
         Self {
-            chart: cx.new(PieChart::new),
+            chart: cx.new(pie::Chart::new),
             _subscriptions: subscriptions,
         }
     }

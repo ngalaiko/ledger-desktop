@@ -23,13 +23,13 @@ use gpui_component::{
 
 use crate::view::colors::get_color;
 
-pub struct PieChart {
+pub struct Chart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
 }
 
-impl PieChart {
+impl Chart {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             plot_inner: PlotInner::new(),
@@ -44,7 +44,7 @@ impl PieChart {
     }
 }
 
-impl Render for PieChart {
+impl Render for Chart {
     #[allow(clippy::too_many_lines)]
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let plot_inner = self.plot_inner.clone();

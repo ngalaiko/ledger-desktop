@@ -7,7 +7,7 @@ use ledger::AccountType;
 
 use crate::data::balance::DailyBalance;
 use crate::util::observe_multiple;
-use crate::view::components::pie_chart::PieChart;
+use crate::view::components::charts::pie;
 use state::AppState;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
@@ -15,7 +15,7 @@ pub fn init(cx: &mut App) -> Entity<Chart> {
 }
 
 pub struct Chart {
-    chart: Entity<PieChart>,
+    chart: Entity<pie::Chart>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -41,7 +41,7 @@ impl Chart {
             },
         ));
         Self {
-            chart: cx.new(PieChart::new),
+            chart: cx.new(pie::Chart::new),
             _subscriptions: subscriptions,
         }
     }
