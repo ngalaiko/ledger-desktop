@@ -52,7 +52,7 @@ impl Chart {
                         .into_iter()
                         .map(|(k, v)| (Label::for_commodity(cx, &k), v))
                         .collect();
-                    this.refresh_data(&dates, values, Some(previous_period), cx);
+                    this.refresh_data(&dates, values, Some(previous_period), false, cx);
                 });
                 cx.notify();
             },

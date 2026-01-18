@@ -50,6 +50,7 @@ pub struct Chart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
+    higher_is_better: bool,
 }
 
 impl Chart {
@@ -58,6 +59,7 @@ impl Chart {
             plot_inner: PlotInner::new(),
             mouse_position: None,
             hovered_idx: None,
+            higher_is_better: false,
         }
     }
 
@@ -66,9 +68,11 @@ impl Chart {
         dates: &[chrono::NaiveDate],
         values: HashMap<Label, Vec<Option<f64>>>,
         previous_period: Option<PreviousPeriodData>,
+        higher_is_better: bool,
         _cx: &mut Context<Self>,
     ) {
         self.hovered_idx = None;
+        self.higher_is_better = higher_is_better;
         self.plot_inner
             .set_data(dates.to_vec(), values, previous_period);
     }
@@ -214,10 +218,12 @@ impl Render for Chart {
                                 // Calculate difference if previous value exists
                                 let diff_element = prev_value.map(|prev| {
                                     let diff = current_value - prev;
-                                    let (indicator, diff_color) = if diff < 0.0 {
-                                        ("▼", green) // Less spent = green (good for expenses)
-                                    } else if diff > 0.0 {
-                                        ("▲", red) // More spent = red (bad for expenses)
+                                    let (indicator, diff_color) = if diff > 0.0 {
+                                        // More than previous period
+                                        ("▲", if self.higher_is_better { green } else { red })
+                                    } else if diff < 0.0 {
+                                        // Less than previous period
+                                        ("▼", if self.higher_is_better { red } else { green })
                                     } else {
                                         ("", muted)
                                     };
