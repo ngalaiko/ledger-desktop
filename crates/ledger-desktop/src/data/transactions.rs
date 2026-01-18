@@ -57,7 +57,7 @@ impl Transactions {
 
                 transactions
                     .iter()
-                    .map(|tx| convert_transaction(converter, tx, target_commodity.clone()))
+                    .filter_map(|tx| convert_transaction(converter, tx, target_commodity.clone()))
                     .collect()
             }
             Err(_) => Vec::new(),
@@ -69,39 +69,39 @@ impl Transactions {
     }
 }
 
-pub fn convert_transaction(
+fn convert_transaction(
     converter: &CurrencyConverter,
     transaction: &Transaction,
     target_commodity: Option<String>,
-) -> Transaction {
+) -> Option<Transaction> {
     let Some(target_commodity) = target_commodity else {
-        return transaction.clone();
+        return Some(transaction.clone());
     };
 
-    Transaction {
-        postings: transaction
-            .postings
-            .iter()
-            .map(|p| {
-                if let Some(converted_amount) = converter.convert_amount(
-                    &p.amount.value,
-                    target_commodity.as_str(),
-                    transaction.date,
-                ) {
-                    Posting {
-                        amount: Amount {
-                            value: converted_amount,
-                            cost: None,
-                            cost_date: None,
-                        },
-                        account: p.account.clone(),
-                        ..p.clone()
-                    }
-                } else {
-                    p.clone()
-                }
-            })
-            .collect(),
-        ..transaction.clone()
+    let postings = transaction
+        .postings
+        .iter()
+        .filter_map(|p| {
+            converter
+                .convert_amount(&p.amount.value, target_commodity.as_str(), transaction.date)
+                .map(|converted_amount| Posting {
+                    amount: Amount {
+                        value: converted_amount,
+                        cost: None,
+                        cost_date: None,
+                    },
+                    account: p.account.clone(),
+                    ..p.clone()
+                })
+        })
+        .collect::<Vec<_>>();
+
+    if postings.is_empty() {
+        return None;
     }
+
+    Some(Transaction {
+        postings,
+        ..transaction.clone()
+    })
 }

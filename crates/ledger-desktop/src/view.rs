@@ -1,7 +1,5 @@
-mod accounts_tree;
 mod charts;
 mod components;
-mod transactions_register;
 
 #[allow(clippy::wildcard_imports)]
 use gpui::*;

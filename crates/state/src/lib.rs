@@ -1,11 +1,8 @@
 pub mod period;
 
-use std::collections::HashSet;
-
 use anyhow::{anyhow, Error};
 use chrono::Datelike;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
-use ledger::Account;
 use period::Period;
 
 pub fn init(cx: &mut App) {
@@ -35,8 +32,6 @@ macro_rules! setting_accessors {
 
 setting_accessors! {
     pub commodity: Option<String>,
-    pub selected_accounts: HashSet<Account>,
-    pub expanded_accounts: HashSet<Account>,
     pub period: Period,
     pub period_idx: usize,
     pub selected_total_assets_tab_idx: usize,
@@ -50,8 +45,6 @@ static CURRENT_VERSION: &str = "1.0";
 pub struct State {
     pub version: String,
     pub commodity: Option<String>,
-    pub selected_accounts: HashSet<Account>,
-    pub expanded_accounts: HashSet<Account>,
     pub period: Period,
     // index of the current period. 0 = current, 1 = previous, 2 = two periods ago, etc.
     pub period_idx: usize,
@@ -118,8 +111,6 @@ impl Default for State {
         Self {
             version: CURRENT_VERSION.to_string(),
             commodity: None,
-            selected_accounts: HashSet::new(),
-            expanded_accounts: HashSet::new(),
             period: Period::Month,
             period_idx: 0,
             selected_total_assets_tab_idx: 0,

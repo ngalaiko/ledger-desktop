@@ -12,21 +12,6 @@ pub struct Label {
 }
 
 impl Label {
-    pub fn new(text: impl Into<String>, color: Hsla) -> Self {
-        Self {
-            text: text.into(),
-            color,
-        }
-    }
-
-    /// Create a label for previous period data (gray/muted color)
-    pub fn for_previous_period(cx: &App, text: &str) -> Self {
-        Self {
-            text: text.to_string(),
-            color: cx.theme().muted_foreground,
-        }
-    }
-
     pub fn for_account(cx: &App, account: &Account) -> Self {
         let text = account.to_string();
         let color = match account.type_of {
