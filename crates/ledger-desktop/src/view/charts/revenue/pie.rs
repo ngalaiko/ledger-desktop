@@ -5,7 +5,7 @@ use gpui::{prelude::*, Subscription};
 
 use ledger::AccountType;
 
-use crate::data::transactions::Transactions;
+use crate::data::balance::DailyBalance;
 use crate::util::observe_multiple;
 use crate::view::components::pie_chart::PieChart;
 use state::AppState;
@@ -24,14 +24,14 @@ impl Chart {
         let mut subscriptions = vec![];
         subscriptions.push(observe_multiple(
             cx,
-            (&Transactions::global(cx), &AppState::global(cx)),
+            (&DailyBalance::global(cx), &AppState::global(cx)),
             |this, cx| {
-                let transactions = Transactions::global(cx);
+                let daily_balance = DailyBalance::global(cx);
                 let app_state = AppState::global(cx);
                 this.chart.update(cx, |this, cx| {
                     let app_state = app_state.read(cx);
                     let values = calculate(
-                        transactions.read(cx),
+                        daily_balance.read(cx),
                         app_state.values.get_period_interval(),
                         app_state.values.commodity.as_deref(),
                     );
@@ -48,7 +48,7 @@ impl Chart {
 }
 
 fn calculate(
-    transactions: &Transactions,
+    daily_balance: &DailyBalance,
     (from_date, to_date): (chrono::NaiveDate, chrono::NaiveDate),
     target_commodity: Option<&str>,
 ) -> HashMap<String, f64> {
@@ -58,26 +58,26 @@ fn calculate(
 
     let mut values: HashMap<String, f64> = HashMap::new();
 
-    // Sum revenue by account for transactions within the period
-    for tx in transactions.as_slice() {
-        if tx.date < from_date || tx.date > to_date {
+    // Sum revenue by account for the period
+    for (account, date_balances) in daily_balance.iter() {
+        if account.type_of != AccountType::Revenue {
             continue;
         }
 
-        for posting in &tx.postings {
-            if posting.account.type_of != AccountType::Revenue {
+        let mut account_total = 0.0;
+        for (date, balance) in date_balances {
+            if *date < from_date || *date > to_date {
                 continue;
             }
 
-            // Check if the posting is in the target commodity
-            if posting.amount.value.commodity == target_commodity {
-                // Revenue postings are typically negative (credits), so we negate to show positive values
-                let value = -posting.amount.value.value.to_f64();
-                if value > 0.0 {
-                    let account_name = posting.account.to_string();
-                    *values.entry(account_name).or_default() += value;
-                }
+            if let Some(amount) = balance.get_amount(target_commodity) {
+                // Revenue is negative in ledger, so negate to show positive
+                account_total += -amount.value.to_f64();
             }
+        }
+
+        if account_total > 0.0 {
+            values.insert(account.to_string(), account_total);
         }
     }
 

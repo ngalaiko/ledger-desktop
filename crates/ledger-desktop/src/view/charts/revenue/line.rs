@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
-use ledger::Balance;
+use ledger::{AccountType, Balance};
 
-use crate::data::revenue::Revenue;
+use crate::data::balance::DailyBalance;
 use crate::util::observe_multiple;
 use crate::view::components::line_chart::LineChart;
 use state::AppState;
@@ -24,14 +24,16 @@ impl Chart {
         let mut subscriptions = vec![];
         subscriptions.push(observe_multiple(
             cx,
-            (&Revenue::global(cx), &AppState::global(cx)),
+            (&DailyBalance::global(cx), &AppState::global(cx)),
             |this, cx| {
-                let revenue = Revenue::global(cx);
+                let daily_balance = DailyBalance::global(cx);
                 let app_state = AppState::global(cx);
                 this.chart.update(cx, |this, cx| {
                     let app_state = app_state.read(cx);
-                    let (dates, values) =
-                        calculate(revenue.read(cx), app_state.values.get_period_interval());
+                    let (dates, values) = calculate(
+                        daily_balance.read(cx),
+                        app_state.values.get_period_interval(),
+                    );
                     this.refresh_data(&dates, values, cx);
                 });
                 cx.notify();
@@ -45,9 +47,15 @@ impl Chart {
 }
 
 fn calculate(
-    revenue: &Revenue,
+    daily_balance: &DailyBalance,
     (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
 ) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
+    // Collect revenue accounts
+    let revenue_accounts: Vec<_> = daily_balance
+        .iter()
+        .filter(|(account, _)| account.type_of == AccountType::Revenue)
+        .collect();
+
     let mut plot_dates = Vec::new();
     let mut plot_balances = Vec::new();
     let mut cumulative_balance = Balance::default();
@@ -55,11 +63,10 @@ fn calculate(
     // Iterate through each day in the filtered range
     let mut current_date = min_date;
     while current_date <= max_date {
-        // Find the revenue for this exact date and add to cumulative
-        if let Some((_, daily_balance)) = revenue.iter().find(|(d, _)| **d == current_date) {
-            for amount in daily_balance.iter() {
-                cumulative_balance.add_amount(amount.clone());
-            }
+        // Sum daily balances across all revenue accounts for this date
+        for (account, _) in &revenue_accounts {
+            let daily = daily_balance.get_daily_balance(account, current_date);
+            cumulative_balance.add(&daily);
         }
 
         plot_dates.push(current_date);
@@ -68,17 +75,20 @@ fn calculate(
         current_date += chrono::Duration::days(1);
     }
 
-    let values = convert_balances_to_values(&plot_balances);
+    // Negate values since revenue is negative in ledger
+    let values = convert_balances_to_values(&plot_balances, true);
     (plot_dates, values)
 }
 
-fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Option<f64>>> {
+fn convert_balances_to_values(balances: &[Balance], negate: bool) -> HashMap<String, Vec<Option<f64>>> {
     let mut all_commodities = std::collections::HashSet::new();
     for balance in balances {
         for amount in balance.iter() {
             all_commodities.insert(amount.commodity.clone());
         }
     }
+
+    let multiplier = if negate { -1.0 } else { 1.0 };
 
     let mut values: HashMap<String, Vec<Option<f64>>> = HashMap::new();
     for commodity in all_commodities {
@@ -87,7 +97,7 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
             .map(|balance| {
                 balance
                     .get_amount(&commodity)
-                    .map(|amount| amount.value.to_f64())
+                    .map(|amount| amount.value.to_f64() * multiplier)
             })
             .collect();
         values.insert(commodity, commodity_values);

@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use gpui::{App, AppContext, Context, Entity, Global, Subscription};
 use ledger::{Account, Balance};
 
-use super::transactions::Transactions;
+use super::balance::DailyBalance;
 
 pub fn init(cx: &mut App) {
     RunningBalance::set_global(cx.new(RunningBalance::new), cx);
@@ -30,9 +30,9 @@ impl RunningBalance {
     fn new(cx: &mut Context<Self>) -> Self {
         let mut subscriptions = vec![];
 
-        let transactions = Transactions::global(cx);
-        subscriptions.push(cx.observe(&transactions, |this, transactions, cx| {
-            this.data = calculate(transactions.read(cx).as_slice());
+        let daily_balance = DailyBalance::global(cx);
+        subscriptions.push(cx.observe(&daily_balance, |this, daily_balance, cx| {
+            this.data = calculate(daily_balance.read(cx));
             cx.notify();
         }));
 
@@ -56,31 +56,33 @@ impl RunningBalance {
     }
 }
 
-fn calculate(
-    transactions: &[ledger::Transaction],
-) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
+fn calculate(daily_balance: &DailyBalance) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
     let mut result: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
-    for transaction in transactions {
-        let tx_date = transaction.date;
-        for posting in &transaction.postings {
-            let account = posting.account.clone();
-            let amount = posting.amount.value.clone();
 
-            let account_balances = result.entry(account).or_default();
+    for (account, daily_balances) in daily_balance.iter() {
+        // Collect all dates for this account
+        let dates: BTreeSet<_> = daily_balances.keys().copied().collect();
 
-            if let Some(balance) = account_balances.get_mut(&tx_date) {
-                balance.add_amount(amount);
-            } else {
-                let previous_balance = account_balances
-                    .range(..tx_date)
-                    .next_back()
-                    .map(|(_, b)| b.clone())
-                    .unwrap_or_default();
-                let mut new_balance = previous_balance;
-                new_balance.add_amount(amount);
-                account_balances.insert(tx_date, new_balance);
-            }
+        if dates.is_empty() {
+            continue;
         }
+
+        let min_date = *dates.first().unwrap();
+        let max_date = *dates.last().unwrap();
+
+        let mut running = Balance::default();
+        let mut account_running: BTreeMap<chrono::NaiveDate, Balance> = BTreeMap::new();
+
+        let mut current_date = min_date;
+        while current_date <= max_date {
+            if let Some(daily) = daily_balances.get(&current_date) {
+                running.add(daily);
+            }
+            account_running.insert(current_date, running.clone());
+            current_date += chrono::Duration::days(1);
+        }
+
+        result.insert(account.clone(), account_running);
     }
 
     result
