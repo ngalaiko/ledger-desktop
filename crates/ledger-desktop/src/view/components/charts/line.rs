@@ -157,7 +157,9 @@ impl Render for Chart {
                             .values
                             .iter()
                             .filter_map(|(commodity, values)| {
-                                values.get(hovered_idx).and_then(|v| v.map(|val| (commodity.clone(), val)))
+                                values
+                                    .get(hovered_idx)
+                                    .and_then(|v| v.map(|val| (commodity.clone(), val)))
                             })
                             .collect();
                         Some((prev_date, prev_values))
@@ -175,6 +177,10 @@ impl Render for Chart {
                         })
                     })
                     .collect();
+
+                if dots.is_empty() {
+                    return this.child(div());
+                }
 
                 // Determine tooltip position based on mouse location
                 let position = if mouse_x < width / 2.0 {
@@ -199,78 +205,99 @@ impl Render for Chart {
                         .bg(cx.theme().background)
                         .rounded_lg()
                         .shadow_lg()
-                        .children(current_values.iter().map(|(commodity, color, current_value)| {
-                            let prev_value = previous_data
-                                .as_ref()
-                                .and_then(|(_, vals)| vals.get(commodity).copied());
+                        .children(current_values.iter().map(
+                            |(commodity, color, current_value)| {
+                                let prev_value = previous_data
+                                    .as_ref()
+                                    .and_then(|(_, vals)| vals.get(commodity).copied());
 
-                            // Calculate difference if previous value exists
-                            let diff_element = prev_value.map(|prev| {
-                                let diff = current_value - prev;
-                                let (indicator, diff_color) = if diff < 0.0 {
-                                    ("▼", green) // Less spent = green (good for expenses)
-                                } else if diff > 0.0 {
-                                    ("▲", red) // More spent = red (bad for expenses)
-                                } else {
-                                    ("", muted)
-                                };
-                                (indicator, diff_color, diff.abs())
-                            });
+                                // Calculate difference if previous value exists
+                                let diff_element = prev_value.map(|prev| {
+                                    let diff = current_value - prev;
+                                    let (indicator, diff_color) = if diff < 0.0 {
+                                        ("▼", green) // Less spent = green (good for expenses)
+                                    } else if diff > 0.0 {
+                                        ("▲", red) // More spent = red (bad for expenses)
+                                    } else {
+                                        ("", muted)
+                                    };
+                                    (indicator, diff_color, diff.abs())
+                                });
 
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                // Header row: commodity name + difference
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .justify_between()
-                                        .child(
-                                            h_flex()
-                                                .gap_1()
-                                                .items_center()
-                                                .child(div().text_xs().text_color(*color).child("—"))
-                                                .child(div().text_sm().font_semibold().child(commodity.clone()))
-                                        )
-                                        .when_some(diff_element.clone(), |el, (indicator, diff_color, diff_val)| {
-                                            el.child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    // Header row: commodity name + difference
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .justify_between()
+                                            .child(
                                                 h_flex()
                                                     .gap_1()
-                                                    .text_sm()
-                                                    .text_color(diff_color)
-                                                    .child(indicator)
-                                                    .child(format_y_value(diff_val))
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(*color)
+                                                            .child("—"),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_semibold()
+                                                            .child(commodity.clone()),
+                                                    ),
                                             )
-                                        })
-                                )
-                                // Current period row
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .text_xs()
-                                        .justify_between()
-                                        .child(format!("{}", date.format("%b %-d")))
-                                        .child(format_y_value(*current_value))
-                                )
-                                // Previous period row (if available)
-                                .when_some(previous_data.as_ref(), |el, (prev_date, prev_vals)| {
-                                    if let Some(prev_val) = prev_vals.get(commodity) {
-                                        el.child(
-                                            h_flex()
-                                                .gap_2()
-                                                .text_xs()
-                                                .text_color(muted)
-                                                .justify_between()
-                                                .child(format!("{}", prev_date.format("%b %-d, %Y")))
-                                                .child(format_y_value(*prev_val))
-                                        )
-                                    } else {
-                                        el
-                                    }
-                                })
-                        })),
+                                            .when_some(
+                                                diff_element.clone(),
+                                                |el, (indicator, diff_color, diff_val)| {
+                                                    el.child(
+                                                        h_flex()
+                                                            .gap_1()
+                                                            .text_sm()
+                                                            .text_color(diff_color)
+                                                            .child(indicator)
+                                                            .child(format_y_value(diff_val)),
+                                                    )
+                                                },
+                                            ),
+                                    )
+                                    // Current period row
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .text_xs()
+                                            .justify_between()
+                                            .child(format!("{}", date.format("%b %-d")))
+                                            .child(format_y_value(*current_value)),
+                                    )
+                                    // Previous period row (if available)
+                                    .when_some(
+                                        previous_data.as_ref(),
+                                        |el, (prev_date, prev_vals)| {
+                                            if let Some(prev_val) = prev_vals.get(commodity) {
+                                                el.child(
+                                                    h_flex()
+                                                        .gap_2()
+                                                        .text_xs()
+                                                        .text_color(muted)
+                                                        .justify_between()
+                                                        .child(format!(
+                                                            "{}",
+                                                            prev_date.format("%b %-d, %Y")
+                                                        ))
+                                                        .child(format_y_value(*prev_val)),
+                                                )
+                                            } else {
+                                                el
+                                            }
+                                        },
+                                    )
+                            },
+                        )),
                 )
             })
     }
