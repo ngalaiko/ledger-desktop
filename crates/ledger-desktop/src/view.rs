@@ -5,7 +5,7 @@ mod transactions_register;
 
 #[allow(clippy::wildcard_imports)]
 use gpui::*;
-use gpui_component::{h_flex, v_flex, StyledExt, TitleBar};
+use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt, TitleBar};
 use state::period::Period;
 
 use self::components::period_toggle;
@@ -43,7 +43,7 @@ impl Window {
 
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (_from, to) = state::AppState::get_period_interval(cx);
+        let (from, to) = state::AppState::get_period_interval(cx);
         let period = state::AppState::get_period(cx);
         v_flex()
             .size_full()
@@ -64,10 +64,28 @@ impl Render for Window {
                             h_flex()
                                 .w_full()
                                 .justify_between()
-                                .child(div().flex().font_semibold().text_lg().child(match period {
-                                    Period::Week | Period::Month => to.format("%B %Y").to_string(),
-                                    Period::Year => to.format("%Y").to_string(),
-                                }))
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(div().font_semibold().text_lg().child(
+                                            match period {
+                                                Period::Week | Period::Month => {
+                                                    to.format("%B %Y").to_string()
+                                                }
+                                                Period::Year => to.format("%Y").to_string(),
+                                            },
+                                        ))
+                                        .child(
+                                            div()
+                                                .text_lg()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(format!(
+                                                    "{} - {}",
+                                                    from.format("%d %b %Y"),
+                                                    to.format("%d %b %Y")
+                                                )),
+                                        ),
+                                )
                                 .child(Entity::clone(&self.period_selector)),
                         )
                         .child(
