@@ -73,10 +73,14 @@ impl State {
             }
             Period::Month => {
                 let mut year = today_date.year();
-                let mut month = today_date.month() as i32 - self.period_idx as i32;
+                let mut month = today_date.month() as i32 - self.period_idx as i32 + 1;
                 while month <= 0 {
                     month += 12;
                     year -= 1;
+                }
+                while month > 12 {
+                    month -= 12;
+                    year += 1;
                 }
                 chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
                     .unwrap()
@@ -91,13 +95,8 @@ impl State {
         let interval_start = match self.period {
             Period::Week => interval_end + chrono::Duration::days(1) - chrono::Duration::weeks(1),
             Period::Month => {
-                let mut year = interval_end.year();
-                let mut month = interval_end.month() as i32;
-                while month <= 1 {
-                    month += 12;
-                    year -= 1;
-                }
-                chrono::NaiveDate::from_ymd_opt(year, month as u32, 1).expect("valid date")
+                chrono::NaiveDate::from_ymd_opt(interval_end.year(), interval_end.month(), 1)
+                    .expect("valid date")
             }
             Period::Year => {
                 chrono::NaiveDate::from_ymd_opt(interval_end.year(), 1, 1).expect("valid date")
