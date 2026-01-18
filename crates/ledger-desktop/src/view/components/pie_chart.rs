@@ -2,7 +2,6 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     f32::consts::{FRAC_PI_2, SQRT_2, TAU},
-    hash::Hash,
     rc::Rc,
 };
 
@@ -11,7 +10,7 @@ const INNER_RADIUS_RATIO: f32 = 0.8;
 
 use gpui::prelude::*;
 use gpui::{div, MouseMoveEvent};
-use gpui::{px, App, Bounds, Context, Hsla, IntoElement, Pixels, Point, Render, Window};
+use gpui::{px, App, Bounds, Context, IntoElement, Pixels, Point, Render, Window};
 use gpui_component::{
     h_flex,
     plot::{
@@ -22,29 +21,20 @@ use gpui_component::{
     ActiveTheme, PixelsExt, StyledExt,
 };
 
+use crate::view::colors::get_color;
+
 pub struct PieChart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
-    colors: Vec<Hsla>,
 }
 
 impl PieChart {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let colors = vec![
-            cx.theme().colors.red,
-            cx.theme().colors.green,
-            cx.theme().colors.blue,
-            cx.theme().colors.yellow,
-            cx.theme().colors.magenta,
-            cx.theme().colors.cyan,
-        ];
-
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
-            plot_inner: PlotInner::new(colors.clone()),
+            plot_inner: PlotInner::new(),
             mouse_position: None,
             hovered_idx: None,
-            colors,
         }
     }
 
@@ -71,7 +61,7 @@ impl Render for PieChart {
         let hovered_data = tooltip_data.and_then(|(mouse_pos, bounds)| {
             let idx = self.plot_inner.get_hovered_index(mouse_pos, &bounds)?;
             let (label, value) = self.plot_inner.data.get(idx)?;
-            let color = get_color(&self.colors, label);
+            let color = get_color(cx, &label);
             let percentage = if self.plot_inner.total > 0.0 {
                 (*value / self.plot_inner.total) * 100.0
             } else {
@@ -184,7 +174,6 @@ impl Render for PieChart {
 
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
-    colors: Vec<Hsla>,
     data: Vec<(String, f64)>,
     total: f64,
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -198,9 +187,8 @@ struct CachedArc {
 }
 
 impl PlotInner {
-    pub fn new(colors: Vec<Hsla>) -> Self {
+    pub fn new() -> Self {
         Self {
-            colors,
             data: vec![],
             total: 0.0,
             bounds: Rc::new(Cell::new(None)),
@@ -260,7 +248,7 @@ impl PlotInner {
 }
 
 impl Plot for PlotInner {
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         if self.data.is_empty() {
             return;
         }
@@ -290,7 +278,7 @@ impl Plot for PlotInner {
 
         // Paint each arc
         for a in &arcs {
-            let color = get_color(&self.colors, &a.data.0);
+            let color = get_color(cx, &a.data.0);
             arc.paint(
                 a,
                 color,
@@ -301,16 +289,4 @@ impl Plot for PlotInner {
             );
         }
     }
-}
-
-fn get_color(colors: &[Hsla], label: &String) -> Hsla {
-    let hash = {
-        use std::hash::Hasher;
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        label.hash(&mut hasher);
-        hasher.finish()
-    };
-    #[allow(clippy::cast_possible_truncation)]
-    let color_idx = (hash as usize) % colors.len();
-    colors[color_idx]
 }

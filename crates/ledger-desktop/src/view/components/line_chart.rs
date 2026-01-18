@@ -2,13 +2,12 @@ use core::f64;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    hash::Hash,
     rc::Rc,
 };
 
 use gpui::prelude::*;
 use gpui::{div, point, MouseMoveEvent};
-use gpui::{px, App, Bounds, Context, Hsla, IntoElement, Pixels, Point, Render, Window};
+use gpui::{px, App, Bounds, Context, IntoElement, Pixels, Point, Render, Window};
 use gpui_component::{
     h_flex,
     plot::{
@@ -19,6 +18,8 @@ use gpui_component::{
     },
     ActiveTheme, PixelsExt, StyledExt,
 };
+
+use crate::view::colors::get_color;
 
 // Constants for chart layout
 /// Padding around the plot area in pixels
@@ -34,25 +35,14 @@ pub struct LineChart {
     plot_inner: PlotInner,
     mouse_position: Option<Point<Pixels>>,
     hovered_idx: Option<usize>,
-    colors: Vec<Hsla>,
 }
 
 impl LineChart {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let colors = vec![
-            cx.theme().colors.red,
-            cx.theme().colors.green,
-            cx.theme().colors.blue,
-            cx.theme().colors.yellow,
-            cx.theme().colors.magenta,
-            cx.theme().colors.cyan,
-        ];
-
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
-            plot_inner: PlotInner::new(colors.clone()),
+            plot_inner: PlotInner::new(),
             mouse_position: None,
             hovered_idx: None,
-            colors,
         }
     }
 
@@ -144,7 +134,7 @@ impl Render for LineChart {
                 let dots: Vec<Dot> = values
                     .iter()
                     .filter_map(|(commodity, value)| {
-                        let color = get_color(&self.colors, commodity);
+                        let color = get_color(cx, commodity);
                         y_scale.tick(value).map(|y_pos| {
                             Dot::new(point(px(x_pos), px(y_pos)))
                                 .size(px(10.0))
@@ -175,7 +165,7 @@ impl Render for LineChart {
                         .shadow_lg()
                         .child(div().text_sm().font_semibold().child(date.to_string()))
                         .children(values.iter().map(|(commodity, value)| {
-                            let color = get_color(&self.colors, commodity);
+                            let color = get_color(cx, commodity);
 
                             h_flex()
                                 .gap_2()
@@ -199,8 +189,6 @@ impl Render for LineChart {
 
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
-    colors: Vec<Hsla>,
-
     dates: Vec<chrono::NaiveDate>,
     values: HashMap<String, Vec<Option<f64>>>,
 
@@ -214,9 +202,8 @@ struct PlotInner {
 }
 
 impl PlotInner {
-    pub fn new(colors: Vec<Hsla>) -> Self {
+    pub fn new() -> Self {
         Self {
-            colors,
             dates: vec![],
             values: HashMap::new(),
             y_min: 0.0,
@@ -369,7 +356,7 @@ impl Plot for PlotInner {
 
         // Draw a line for each label
         for (label, values) in &self.values {
-            let color = get_color(&self.colors, label);
+            let color = get_color(cx, label);
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
@@ -383,16 +370,4 @@ impl Plot for PlotInner {
                 .paint(&bounds, window);
         }
     }
-}
-
-fn get_color(colors: &[Hsla], commodity: &str) -> Hsla {
-    let hash = {
-        use std::hash::Hasher;
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        commodity.hash(&mut hasher);
-        hasher.finish()
-    };
-    #[allow(clippy::cast_possible_truncation)]
-    let color_idx = (hash as usize) % colors.len();
-    colors[color_idx]
 }

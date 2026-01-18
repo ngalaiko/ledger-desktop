@@ -95,7 +95,7 @@ fn convert_balances_to_values(balances: &[Balance]) -> HashMap<String, Vec<Optio
             .map(|balance| {
                 let amount = balance.get_amount(&commodity);
                 let value = amount.map(|a| a.value.clone()).unwrap_or(D128::ZERO);
-                Some(-value.to_f64())
+                Some(value.to_f64())
             })
             .collect();
         values.insert(commodity, commodity_values);
