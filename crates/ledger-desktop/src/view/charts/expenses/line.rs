@@ -22,25 +22,21 @@ pub struct Chart {
 impl Chart {
     fn new(cx: &mut Context<Self>) -> Self {
         let mut subscriptions = vec![];
-        subscriptions.push(
-            observe_multiple(
-                cx,
-                (&Expenses::global(cx), &AppState::global(cx)),
-                |this, cx| {
-                    let expenses = Expenses::global(cx);
-                    let app_state = AppState::global(cx);
-                    this.chart.update(cx, |this, cx| {
-                        let app_state = app_state.read(cx);
-                        let (dates, values) = calculate(
-                            expenses.read(cx),
-                            app_state.values.get_period_interval(),
-                        );
-                        this.refresh_data(&dates, values, cx);
-                    });
-                    cx.notify();
-                },
-            ),
-        );
+        subscriptions.push(observe_multiple(
+            cx,
+            (&Expenses::global(cx), &AppState::global(cx)),
+            |this, cx| {
+                let expenses = Expenses::global(cx);
+                let app_state = AppState::global(cx);
+                this.chart.update(cx, |this, cx| {
+                    let app_state = app_state.read(cx);
+                    let (dates, values) =
+                        calculate(expenses.read(cx), app_state.values.get_period_interval());
+                    this.refresh_data(&dates, values, cx);
+                });
+                cx.notify();
+            },
+        ));
         Self {
             chart: cx.new(LineChart::new),
             _subscriptions: subscriptions,

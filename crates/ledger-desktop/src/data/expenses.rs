@@ -32,14 +32,12 @@ impl Expenses {
         let mut subscriptions = vec![];
         let transactions = Transactions::global(cx);
 
-        subscriptions.push(
-            cx.observe(&transactions, |this, transactions, cx| {
-                let transactions = transactions.read(cx);
-                let data = calculate(transactions);
-                this.data = data;
-                cx.notify();
-            }),
-        );
+        subscriptions.push(cx.observe(&transactions, |this, transactions, cx| {
+            let transactions = transactions.read(cx);
+            let data = calculate(transactions);
+            this.data = data;
+            cx.notify();
+        }));
 
         Self {
             data: BTreeMap::new(),

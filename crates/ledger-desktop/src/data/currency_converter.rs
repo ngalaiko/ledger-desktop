@@ -80,22 +80,14 @@ fn calculate(
 
     let mut record = |price: &Price| {
         {
-            let to_map = history
-                .entry(price.commodity.clone())
-                .or_default();
-            let date_map = to_map
-                .entry(price.value.commodity.clone())
-                .or_default();
+            let to_map = history.entry(price.commodity.clone()).or_default();
+            let date_map = to_map.entry(price.value.commodity.clone()).or_default();
             date_map.insert(price.date, price.value.value);
         }
 
         {
-            let from_map = history
-                .entry(price.value.commodity.clone())
-                .or_default();
-            let date_map = from_map
-                .entry(price.commodity.clone())
-                .or_default();
+            let from_map = history.entry(price.value.commodity.clone()).or_default();
+            let date_map = from_map.entry(price.commodity.clone()).or_default();
             date_map.insert(price.date, D128::ONE / price.value.value);
         }
     };

@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
-use ledger::Balance;
+use ledger::{AccountType, Balance};
 
+use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
-use state::AppState;
-
-use crate::data::total_assets::TotalAssets;
 use crate::view::components::line_chart::LineChart;
+use state::AppState;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
     cx.new(Chart::new)
@@ -23,26 +22,23 @@ pub struct Chart {
 impl Chart {
     fn new(cx: &mut Context<Self>) -> Self {
         let mut subscriptions = vec![];
-        subscriptions.push(
-            // observe total assets changes and refresh chart data
-            observe_multiple(
-                cx,
-                (&TotalAssets::global(cx), &AppState::global(cx)),
-                |this, cx| {
-                    let total_assets = TotalAssets::global(cx);
-                    let app_state = AppState::global(cx);
-                    this.chart.update(cx, |this, cx| {
-                        let app_state = app_state.read(cx);
-                        let (dates, values) = calculate(
-                            total_assets.read(cx),
-                            app_state.values.get_period_interval(),
-                        );
-                        this.refresh_data(&dates, values, cx);
-                    });
-                    cx.notify();
-                },
-            ),
-        );
+        subscriptions.push(observe_multiple(
+            cx,
+            (&RunningBalance::global(cx), &AppState::global(cx)),
+            |this, cx| {
+                let running_balance = RunningBalance::global(cx);
+                let app_state = AppState::global(cx);
+                this.chart.update(cx, |this, cx| {
+                    let app_state = app_state.read(cx);
+                    let (dates, values) = calculate(
+                        running_balance.read(cx),
+                        app_state.values.get_period_interval(),
+                    );
+                    this.refresh_data(&dates, values, cx);
+                });
+                cx.notify();
+            },
+        ));
         Self {
             chart: cx.new(LineChart::new),
             _subscriptions: subscriptions,
@@ -51,31 +47,40 @@ impl Chart {
 }
 
 fn calculate(
-    total_assets: &TotalAssets,
+    running_balance: &RunningBalance,
     (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
 ) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
+    // Collect accounts that are Assets or Liabilities
+    let accounts: Vec<_> = running_balance
+        .iter()
+        .filter_map(|(account, _)| {
+            matches!(
+                account.type_of,
+                AccountType::Assets | AccountType::Liabilities
+            )
+            .then_some(account)
+        })
+        .collect();
+
     let mut plot_dates = Vec::new();
     let mut plot_balances = Vec::new();
 
     // Iterate through each day in the filtered range
     let mut current_date = min_date;
     while current_date <= max_date {
-        // Find the balance for this date (or the most recent one before it)
-        // Balance is already converted to target commodity upstream
-        let balance = total_assets
-            .iter()
-            .filter(|(d, _)| **d <= current_date)
-            .last()
-            .map(|(_, b)| b.clone())
-            .unwrap_or_default();
+        // Sum balances across all asset and liability accounts for this date
+        let mut total_balance = Balance::default();
+        for account in &accounts {
+            let balance = running_balance.get_balance(account, current_date);
+            total_balance.add(&balance);
+        }
 
         plot_dates.push(current_date);
-        plot_balances.push(balance);
+        plot_balances.push(total_balance);
 
         current_date += chrono::Duration::days(1);
     }
 
-    // Convert Balance data to HashMap<String, Vec<Option<f64>>> format
     let values = convert_balances_to_values(&plot_balances);
     (plot_dates, values)
 }
