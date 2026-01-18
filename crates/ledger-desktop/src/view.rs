@@ -45,57 +45,61 @@ impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (from, to) = state::AppState::get_period_interval(cx);
         let period = state::AppState::get_period(cx);
+
+        let title = h_flex()
+            .gap_2()
+            .child(div().font_semibold().text_lg().child(match period {
+                Period::Week | Period::Month => to.format("%B %Y").to_string(),
+                Period::Year => to.format("%Y").to_string(),
+            }))
+            .child(
+                div()
+                    .text_lg()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!(
+                        "{} - {}",
+                        from.format("%d %b %Y"),
+                        to.format("%d %b %Y")
+                    )),
+            );
+
+        let header = div()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .child(div())
+                    .child(Entity::clone(&self.period_toggle))
+                    .child(Entity::clone(&self.commodity_selector)),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .child(title)
+                    .child(Entity::clone(&self.period_selector)),
+            );
+
+        let main = v_flex()
+            .size_full()
+            .gap_4()
+            .child(
+                h_flex()
+                    .size_full()
+                    .gap_4()
+                    .child(Entity::clone(&self.revenue))
+                    .child(Entity::clone(&self.expenses)),
+            )
+            .child(Entity::clone(&self.total_assets));
+
         v_flex()
             .size_full()
             .child(TitleBar::new().child(div().text_center().flex_1().child("ledger-desktop")))
             .child(
-                div().size_full().child(
-                    v_flex()
-                        .size_full()
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .justify_between()
-                                .child(div())
-                                .child(Entity::clone(&self.period_toggle))
-                                .child(Entity::clone(&self.commodity_selector)),
-                        )
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .justify_between()
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .child(div().font_semibold().text_lg().child(
-                                            match period {
-                                                Period::Week | Period::Month => {
-                                                    to.format("%B %Y").to_string()
-                                                }
-                                                Period::Year => to.format("%Y").to_string(),
-                                            },
-                                        ))
-                                        .child(
-                                            div()
-                                                .text_lg()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(format!(
-                                                    "{} - {}",
-                                                    from.format("%d %b %Y"),
-                                                    to.format("%d %b %Y")
-                                                )),
-                                        ),
-                                )
-                                .child(Entity::clone(&self.period_selector)),
-                        )
-                        .child(
-                            h_flex()
-                                .size_full()
-                                .child(Entity::clone(&self.revenue))
-                                .child(Entity::clone(&self.expenses)),
-                        )
-                        .child(Entity::clone(&self.total_assets)),
-                ),
+                div()
+                    .p_2()
+                    .size_full()
+                    .child(v_flex().size_full().child(header).child(main)),
             )
     }
 }
