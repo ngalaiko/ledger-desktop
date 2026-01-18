@@ -60,7 +60,9 @@ impl DailyBalance {
     }
 }
 
-fn calculate(transactions: &Transactions) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
+fn calculate(
+    transactions: &Transactions,
+) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
     let mut result: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
 
     for transaction in transactions.as_slice() {

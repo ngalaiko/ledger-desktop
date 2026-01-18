@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use super::ledger::Ledger;
 use fastnum::D128;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription};
 use ledger::{CurrencyAmount, Price};
@@ -29,10 +30,10 @@ impl CurrencyConverter {
 
     fn new(cx: &mut Context<Self>) -> Self {
         let mut subscriptions = vec![];
-        let ledger_file = ledger::File::global(cx);
+        let ledger_file = Ledger::global(cx);
 
         subscriptions.push(cx.observe(&ledger_file, |this, ledger_file, cx| {
-            this.history = match ledger_file.read(cx).state.as_ref() {
+            this.history = match ledger_file.read(cx).file.as_ref() {
                 Ok(state) => calculate(state),
                 Err(_) => HashMap::new(),
             };
@@ -73,7 +74,7 @@ impl CurrencyConverter {
 }
 
 fn calculate(
-    state: &ledger::FileState,
+    state: &ledger::File,
 ) -> HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>> {
     let mut history: HashMap<String, HashMap<String, BTreeMap<chrono::NaiveDate, D128>>> =
         HashMap::new();

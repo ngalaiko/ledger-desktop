@@ -56,7 +56,9 @@ impl RunningBalance {
     }
 }
 
-fn calculate(daily_balance: &DailyBalance) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
+fn calculate(
+    daily_balance: &DailyBalance,
+) -> HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> {
     let mut result: HashMap<Account, BTreeMap<chrono::NaiveDate, Balance>> = HashMap::new();
 
     for (account, daily_balances) in daily_balance.iter() {

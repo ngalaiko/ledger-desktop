@@ -35,7 +35,6 @@ fn main() {
             cx.new(|cx| {
                 gpui_component::init(cx);
                 state::init(cx);
-                ledger::init::<&str>(None, cx);
                 data::init(cx);
 
                 Root::new(view::init(window, cx), window, cx)

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use fastnum::D128;
-use gpui::{App, Entity, Window};
 use gpui::{prelude::*, Subscription};
+use gpui::{App, Entity, Window};
 use gpui_component::v_flex;
 
 use ledger::{AccountType, Balance};
@@ -46,7 +46,8 @@ impl Chart {
                     let (prev_dates, prev_values) = calculate(daily_balance, prev_interval);
 
                     // Align previous period values to current period indices
-                    let previous_period = align_previous_period(dates.len(), prev_dates, prev_values);
+                    let previous_period =
+                        align_previous_period(dates.len(), prev_dates, prev_values);
 
                     let values = values
                         .into_iter()

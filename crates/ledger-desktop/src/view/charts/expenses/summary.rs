@@ -125,11 +125,7 @@ impl Render for Summary {
         let muted = cx.theme().muted_foreground;
 
         let (start, end) = self.current_period;
-        let date_range = format!(
-            "{} – {}",
-            start.format("%d/%m/%y"),
-            end.format("%d/%m/%y")
-        );
+        let date_range = format!("{} – {}", start.format("%d/%m/%y"), end.format("%d/%m/%y"));
 
         // Collect all commodities from both current and previous periods
         let mut all_commodities: Vec<_> = self
@@ -159,12 +155,11 @@ impl Render for Summary {
                     // Title
                     .child(div().text_sm().text_color(muted).child("Expenses"))
                     // Current total (large)
-                    .child(
-                        div()
-                            .text_2xl()
-                            .font_semibold()
-                            .child(format!("{} {}", format_value(current), commodity)),
-                    )
+                    .child(div().text_2xl().font_semibold().child(format!(
+                        "{} {}",
+                        format_value(current),
+                        commodity
+                    )))
                     // Difference + current period dates
                     .child(
                         h_flex()

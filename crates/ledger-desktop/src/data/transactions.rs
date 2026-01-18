@@ -3,7 +3,8 @@ use ledger::{Amount, Posting, Transaction};
 use state::AppState;
 
 use super::currency_converter::CurrencyConverter;
-use crate::util::observe_multiple;
+
+use crate::{data::ledger::Ledger, util::observe_multiple};
 
 pub fn init(cx: &mut App) {
     Transactions::set_global(cx.new(Transactions::new), cx);
@@ -33,7 +34,7 @@ impl Transactions {
         subscriptions.push(observe_multiple(
             cx,
             (
-                &ledger::File::global(cx),
+                &Ledger::global(cx),
                 &AppState::global(cx),
                 &CurrencyConverter::global(cx),
             ),
@@ -50,7 +51,7 @@ impl Transactions {
     }
 
     fn recalculate(&mut self, cx: &App) {
-        self.data = match ledger::File::transactions(cx) {
+        self.data = match Ledger::transactions(cx) {
             Ok(transactions) => {
                 let converter = CurrencyConverter::global(cx).read(cx);
                 let target_commodity = AppState::get_commodity(cx);

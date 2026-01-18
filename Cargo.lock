@@ -3120,7 +3120,6 @@ dependencies = [
  "chrono",
  "fastnum",
  "futures-lite 2.6.1",
- "gpui",
  "serde",
  "thiserror 2.0.17",
 ]
