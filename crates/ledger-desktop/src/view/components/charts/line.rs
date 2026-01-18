@@ -19,7 +19,7 @@ use gpui_component::{
     ActiveTheme, PixelsExt, StyledExt,
 };
 
-use crate::view::colors::get_color;
+use super::Label;
 
 // Constants for chart layout
 /// Padding around the plot area in pixels
@@ -49,7 +49,7 @@ impl Chart {
     pub fn refresh_data(
         &mut self,
         dates: &[chrono::NaiveDate],
-        values: HashMap<String, Vec<Option<f64>>>,
+        values: HashMap<Label, Vec<Option<f64>>>,
         _cx: &mut Context<Self>,
     ) {
         self.hovered_idx = None;
@@ -126,7 +126,7 @@ impl Render for Chart {
                     .values
                     .iter()
                     .filter_map(|(commodity, values_vec)| {
-                        values_vec[hovered_idx].map(|v| (commodity, v))
+                        values_vec[hovered_idx].map(|v| (commodity.clone(), v))
                     })
                     .collect::<Vec<_>>();
 
@@ -134,11 +134,10 @@ impl Render for Chart {
                 let dots: Vec<Dot> = values
                     .iter()
                     .filter_map(|(commodity, value)| {
-                        let color = get_color(cx, commodity);
                         y_scale.tick(value).map(|y_pos| {
                             Dot::new(point(px(x_pos), px(y_pos)))
                                 .size(px(10.0))
-                                .fill(color)
+                                .fill(commodity.color)
                                 .stroke(cx.theme().background)
                         })
                     })
@@ -165,12 +164,10 @@ impl Render for Chart {
                         .shadow_lg()
                         .child(div().text_sm().font_semibold().child(date.to_string()))
                         .children(values.iter().map(|(commodity, value)| {
-                            let color = get_color(cx, commodity);
-
                             h_flex()
                                 .gap_2()
                                 .items_center()
-                                .child(div().text_xs().text_color(color).child("—"))
+                                .child(div().text_xs().text_color(commodity.color).child("—"))
                                 .child(
                                     h_flex()
                                         .gap_2()
@@ -178,7 +175,7 @@ impl Render for Chart {
                                         .font_medium()
                                         .w_full()
                                         .justify_between()
-                                        .child((*commodity).clone())
+                                        .child(commodity.text.clone())
                                         .child(value.to_string()),
                                 )
                         })),
@@ -190,7 +187,7 @@ impl Render for Chart {
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
     dates: Vec<chrono::NaiveDate>,
-    values: HashMap<String, Vec<Option<f64>>>,
+    values: HashMap<Label, Vec<Option<f64>>>,
 
     y_min: f64,
     y_max: f64,
@@ -218,7 +215,7 @@ impl PlotInner {
     pub fn set_data(
         &mut self,
         dates: Vec<chrono::NaiveDate>,
-        values: HashMap<String, Vec<Option<f64>>>,
+        values: HashMap<Label, Vec<Option<f64>>>,
     ) {
         self.dates = dates;
         self.values = values;
@@ -356,7 +353,6 @@ impl Plot for PlotInner {
 
         // Draw a line for each label
         for (label, values) in &self.values {
-            let color = get_color(cx, label);
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
 
@@ -364,7 +360,7 @@ impl Plot for PlotInner {
                 .data(self.dates.iter().zip(values.iter()))
                 .x(move |d| x_scale.tick(d.0))
                 .y(move |d| d.1.and_then(|value| y_scale.tick(&value)))
-                .stroke(color)
+                .stroke(label.color.clone())
                 .stroke_width(px(1.0))
                 .stroke_style(StrokeStyle::Linear)
                 .paint(&bounds, window);

@@ -16,6 +16,7 @@ pub enum AccountType {
     Unknown,
     Assets,
     Liabilities,
+    Equity,
     Expenses,
     Revenue,
 }
@@ -66,7 +67,8 @@ impl Account {
                 "assets" => AccountType::Assets,
                 "liabilities" => AccountType::Liabilities,
                 "expenses" => AccountType::Expenses,
-                "revenue" | "income" => AccountType::Revenue,
+                "revenue" => AccountType::Revenue,
+                "equity" => AccountType::Equity,
                 _ => AccountType::Unknown,
             }
         };

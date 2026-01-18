@@ -7,7 +7,7 @@ use ledger::{AccountType, Balance};
 
 use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
-use crate::view::components::charts::line;
+use crate::view::components::charts::{line, Label};
 use state::AppState;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
@@ -34,6 +34,10 @@ impl Chart {
                         running_balance.read(cx),
                         app_state.values.get_period_interval(),
                     );
+                    let values = values
+                        .into_iter()
+                        .map(|(k, v)| (Label::for_commodity(cx, &k), v))
+                        .collect();
                     this.refresh_data(&dates, values, cx);
                 });
                 cx.notify();

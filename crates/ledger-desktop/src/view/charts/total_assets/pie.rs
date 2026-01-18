@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
-use ledger::AccountType;
+use ledger::{Account, AccountType};
 use state::AppState;
 
 use crate::data::running_balance::RunningBalance;
 use crate::util::observe_multiple;
-use crate::view::components::charts::pie;
+use crate::view::components::charts::{pie, Label};
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
     cx.new(Chart::new)
@@ -37,6 +37,10 @@ impl Chart {
                             app_state.values.get_period_interval(),
                             app_state.values.commodity.as_deref(),
                         );
+                        let values = values
+                            .into_iter()
+                            .map(|(k, v)| (Label::for_account(cx, &k), v))
+                            .collect();
                         this.refresh_data(values, cx);
                     });
                     cx.notify();
@@ -54,12 +58,12 @@ fn calculate(
     running_balance: &RunningBalance,
     (_from, max_date): (chrono::NaiveDate, chrono::NaiveDate),
     target_commodity: Option<&str>,
-) -> HashMap<String, f64> {
+) -> HashMap<Account, f64> {
     let Some(target_commodity) = target_commodity else {
         return HashMap::new();
     };
 
-    let mut values: HashMap<String, f64> = HashMap::new();
+    let mut values: HashMap<Account, f64> = HashMap::new();
 
     // For each account, get balance at max_date and extract the target commodity value
     for (account, _) in running_balance.iter() {
@@ -78,8 +82,7 @@ fn calculate(
             let value = amount.value.to_f64();
             if value > 0.0 {
                 // Use the full account path as the label
-                let account_name = account.to_string();
-                values.insert(account_name, value);
+                values.insert(account.clone(), value);
             }
         }
     }

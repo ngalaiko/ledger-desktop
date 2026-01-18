@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use gpui::{div, App, Entity, Window};
 use gpui::{prelude::*, Subscription};
 
-use ledger::AccountType;
+use ledger::{Account, AccountType};
 
 use crate::data::balance::DailyBalance;
 use crate::util::observe_multiple;
-use crate::view::components::charts::pie;
+use crate::view::components::charts::{pie, Label};
 use state::AppState;
 
 pub fn init(cx: &mut App) -> Entity<Chart> {
@@ -35,6 +35,10 @@ impl Chart {
                         app_state.values.get_period_interval(),
                         app_state.values.commodity.as_deref(),
                     );
+                    let values = values
+                        .into_iter()
+                        .map(|(k, v)| (Label::for_account(cx, &k), v))
+                        .collect();
                     this.refresh_data(values, cx);
                 });
                 cx.notify();
@@ -51,12 +55,12 @@ fn calculate(
     daily_balance: &DailyBalance,
     (from_date, to_date): (chrono::NaiveDate, chrono::NaiveDate),
     target_commodity: Option<&str>,
-) -> HashMap<String, f64> {
+) -> HashMap<Account, f64> {
     let Some(target_commodity) = target_commodity else {
         return HashMap::new();
     };
 
-    let mut values: HashMap<String, f64> = HashMap::new();
+    let mut values: HashMap<Account, f64> = HashMap::new();
 
     // Sum revenue by account for the period
     for (account, date_balances) in daily_balance.iter() {
@@ -77,7 +81,7 @@ fn calculate(
         }
 
         if account_total > 0.0 {
-            values.insert(account.to_string(), account_total);
+            values.insert(account.clone(), account_total);
         }
     }
 

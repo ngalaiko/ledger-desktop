@@ -21,7 +21,7 @@ use gpui_component::{
     ActiveTheme, PixelsExt, StyledExt,
 };
 
-use crate::view::colors::get_color;
+use super::Label;
 
 pub struct Chart {
     plot_inner: PlotInner,
@@ -38,7 +38,7 @@ impl Chart {
         }
     }
 
-    pub fn refresh_data(&mut self, values: HashMap<String, f64>, _cx: &mut Context<Self>) {
+    pub fn refresh_data(&mut self, values: HashMap<Label, f64>, _cx: &mut Context<Self>) {
         self.hovered_idx = None;
         self.plot_inner.set_data(values);
     }
@@ -61,13 +61,12 @@ impl Render for Chart {
         let hovered_data = tooltip_data.and_then(|(mouse_pos, bounds)| {
             let idx = self.plot_inner.get_hovered_index(mouse_pos, &bounds)?;
             let (label, value) = self.plot_inner.data.get(idx)?;
-            let color = get_color(cx, &label);
             let percentage = if self.plot_inner.total > 0.0 {
                 (*value / self.plot_inner.total) * 100.0
             } else {
                 0.0
             };
-            Some((label.clone(), *value, color, percentage))
+            Some((label.clone(), *value, label.color, percentage))
         });
 
         div()
@@ -153,7 +152,7 @@ impl Render for Chart {
                                 .gap_2()
                                 .items_center()
                                 .child(div().text_xs().text_color(color).child("●"))
-                                .child(div().text_sm().font_semibold().child(label)),
+                                .child(div().text_sm().font_semibold().child(label.text)),
                         )
                         .child(
                             h_flex()
@@ -174,7 +173,7 @@ impl Render for Chart {
 
 #[derive(IntoPlot, Clone)]
 struct PlotInner {
-    data: Vec<(String, f64)>,
+    data: Vec<(Label, f64)>,
     total: f64,
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     cached_arcs: Rc<RefCell<Vec<CachedArc>>>,
@@ -196,9 +195,9 @@ impl PlotInner {
         }
     }
 
-    pub fn set_data(&mut self, values: HashMap<String, f64>) {
+    pub fn set_data(&mut self, values: HashMap<Label, f64>) {
         // Convert to sorted vec for consistent ordering
-        let mut data: Vec<(String, f64)> = values.into_iter().filter(|(_, v)| *v > 0.0).collect();
+        let mut data: Vec<(Label, f64)> = values.into_iter().filter(|(_, v)| *v > 0.0).collect();
         data.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         self.total = data.iter().map(|(_, v)| v).sum();
@@ -248,7 +247,7 @@ impl PlotInner {
 }
 
 impl Plot for PlotInner {
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
         if self.data.is_empty() {
             return;
         }
@@ -263,7 +262,7 @@ impl Plot for PlotInner {
             .outer_radius(outer_radius);
 
         #[allow(clippy::cast_possible_truncation)]
-        let pie = Pie::<(String, f64)>::new().value(|(_, v)| Some(*v as f32));
+        let pie = Pie::<(Label, f64)>::new().value(|(_, v)| Some(*v as f32));
         let arcs = pie.arcs(&self.data);
 
         // Cache arc angles for hover detection
@@ -278,10 +277,9 @@ impl Plot for PlotInner {
 
         // Paint each arc
         for a in &arcs {
-            let color = get_color(cx, &a.data.0);
             arc.paint(
                 a,
-                color,
+                a.data.0.color,
                 Some(inner_radius),
                 Some(outer_radius),
                 &bounds,

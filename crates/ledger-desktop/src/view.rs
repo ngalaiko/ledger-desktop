@@ -1,6 +1,5 @@
 mod accounts_tree;
 mod charts;
-mod colors;
 mod components;
 mod transactions_register;
 
