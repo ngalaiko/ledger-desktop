@@ -6,7 +6,7 @@ mod prices;
 mod sexpr;
 mod transactions;
 
-pub use accounts::{Account, AccountType, Balance, TreeNode};
+pub use accounts::{Account, AccountType, Balance};
 pub use amounts::{Amount, CurrencyAmount};
 pub use file::{init, File, FileState};
 pub use prices::Price;

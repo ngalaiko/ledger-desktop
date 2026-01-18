@@ -2,7 +2,7 @@ use anyhow::Error;
 use futures_lite::StreamExt;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
 
-use crate::{cli::Cli, Price, Transaction, TreeNode};
+use crate::{cli::Cli, Price, Transaction};
 
 pub fn init<P: AsRef<std::path::Path>>(path: Option<P>, cx: &mut App) {
     File::set_global(cx.new(|cx| File::new(path, cx)), cx);
@@ -12,22 +12,11 @@ struct GlobalFile(Entity<File>);
 
 impl Global for GlobalFile {}
 
+#[derive(Default)]
 pub struct FileState {
-    pub accounts: TreeNode,
     pub transactions: Vec<Transaction>,
     pub prices: Vec<Price>,
     pub files: Vec<std::path::PathBuf>,
-}
-
-impl Default for FileState {
-    fn default() -> Self {
-        Self {
-            accounts: TreeNode::new(),
-            transactions: Vec::new(),
-            prices: Vec::new(),
-            files: Vec::new(),
-        }
-    }
 }
 
 impl FileState {
@@ -43,7 +32,6 @@ impl FileState {
             async move {
                 let mut transactions = Vec::new();
                 let mut prices = Vec::new();
-                let mut accounts = TreeNode::new();
                 let mut files = Vec::new();
 
                 let transactions_stream =
@@ -57,9 +45,6 @@ impl FileState {
                 while let Some(result) = combined.next().await {
                     match result? {
                         Item::Transaction(transaction) => {
-                            for posting in transaction.postings.iter() {
-                                accounts.add_account(&posting.account);
-                            }
                             transactions.push(transaction);
                         }
                         Item::Price(price) => {
@@ -72,7 +57,6 @@ impl FileState {
                 }
 
                 Ok(Self {
-                    accounts,
                     transactions,
                     prices,
                     files,
@@ -113,14 +97,6 @@ impl File {
         let state = &Self::global(cx).read(cx).state;
         match state {
             Ok(state) => Ok(&state.transactions),
-            Err(e) => Err(Error::msg(e.to_string())),
-        }
-    }
-
-    pub fn accounts(cx: &App) -> Result<&TreeNode, Error> {
-        let state = &Self::global(cx).read(cx).state;
-        match state {
-            Ok(state) => Ok(&state.accounts),
             Err(e) => Err(Error::msg(e.to_string())),
         }
     }

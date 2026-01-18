@@ -8,7 +8,9 @@ use gpui_component::{
     tree::{tree, TreeItem, TreeState},
 };
 
-use ledger::{Account, TreeNode};
+use ledger::Account;
+
+use crate::data::accounts_tree::{AccountsTree, TreeNode};
 use state::AppState;
 use ui::checkbox::{Checkbox, CheckboxState};
 use ui::icons::IconName;
@@ -31,15 +33,12 @@ impl AccountsTreeView {
         let mut subscriptions = vec![];
         subscriptions.push(observe_multiple(
             cx,
-            (&ledger::File::global(cx), &AppState::global(cx)),
+            (&AccountsTree::global(cx), &AppState::global(cx)),
             |this, cx| {
-                let tree_items = match ledger::File::accounts(cx) {
-                    Ok(accounts) => {
-                        let expanded_accounts = AppState::get_expanded_accounts(cx);
-                        build_items(accounts, &expanded_accounts)
-                    }
-                    Err(_) => vec![],
-                };
+                let accounts_tree = AccountsTree::global(cx);
+                let accounts = accounts_tree.read(cx).tree();
+                let expanded_accounts = AppState::get_expanded_accounts(cx);
+                let tree_items = build_items(accounts, &expanded_accounts);
                 this.tree_state.update(cx, |tree_state, cx| {
                     tree_state.set_items(tree_items, cx);
                     cx.notify();
@@ -78,7 +77,7 @@ impl AccountsTreeView {
                 let all_descendants: Vec<Account> = node
                     .children
                     .iter()
-                    .flat_map(ledger::TreeNode::collect_all_accounts)
+                    .flat_map(TreeNode::collect_all_accounts)
                     .collect();
                 let selected_count = all_descendants
                     .iter()
@@ -158,7 +157,7 @@ impl Render for AccountsTreeView {
                     let account = Account::parse(&item.id);
 
                     // Get the tree node to calculate state
-                    let tree_node = ledger::File::accounts(cx).expect("todo").clone();
+                    let tree_node = AccountsTree::global(cx).read(cx).tree().clone();
                     let checkbox_state = this.calculate_state(&tree_node, &account, cx);
 
                     let with_checkbox = div()
