@@ -24,12 +24,18 @@ use super::Label;
 // Constants for chart layout
 /// Padding around the plot area in pixels
 const PLOT_PADDING: f32 = 10.0;
-/// Gap reserved for axis labels
-const AXIS_GAP: f32 = 30.0;
-/// Minimum number of data points before skipping ticks on X-axis
-const MIN_TICK_SPACING: usize = 10;
-/// Number of Y-axis value labels to display
-const Y_AXIS_LABEL_COUNT: usize = 5;
+/// Gap reserved for X-axis labels below chart
+const X_AXIS_GAP: f32 = 10.0;
+/// Space reserved for Y-axis labels on the right
+const Y_AXIS_LABEL_WIDTH: f32 = 35.0;
+/// Estimated width of date label "YYYY-MM-DD" in pixels (10 chars * ~6px + padding)
+const ESTIMATED_DATE_LABEL_WIDTH: f32 = 70.0;
+/// Estimated height of Y-axis label in pixels (font size + padding)
+const ESTIMATED_Y_LABEL_HEIGHT: f32 = 20.0;
+/// Minimum number of Y-axis labels to display
+const MIN_Y_LABELS: usize = 2;
+/// Maximum number of Y-axis labels to display
+const MAX_Y_LABELS: usize = 10;
 
 pub struct Chart {
     plot_inner: PlotInner,
@@ -118,8 +124,9 @@ impl Render for Chart {
                     .tick(&date)
                     .expect("hovered date should have x position");
 
-                // Create CrossLine for the vertical crosshair
-                let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y)));
+                // Create CrossLine for the vertical crosshair (limited to chart height)
+                let chart_height = calc_height(&tooltip_data.1);
+                let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y))).height(chart_height);
 
                 let values = self
                     .plot_inner
@@ -280,11 +287,11 @@ impl PlotInner {
 }
 
 fn calc_width(bounds: &Bounds<Pixels>) -> f32 {
-    bounds.size.width.as_f32() - PLOT_PADDING
+    bounds.size.width.as_f32() - PLOT_PADDING - Y_AXIS_LABEL_WIDTH
 }
 
 fn calc_height(bounds: &Bounds<Pixels>) -> f32 {
-    bounds.size.height.as_f32() - PLOT_PADDING - AXIS_GAP
+    bounds.size.height.as_f32() - PLOT_PADDING - X_AXIS_GAP
 }
 
 fn calc_x_scale(
@@ -298,6 +305,29 @@ fn calc_x_scale(
 fn calc_y_scale(bounds: &Bounds<Pixels>, domain: &[f64]) -> ScaleLinear<f64> {
     let height = calc_height(bounds);
     ScaleLinear::new(domain.to_vec(), vec![height, PLOT_PADDING])
+}
+
+/// Format a number for display on the Y-axis (1.2K, 1.5M, etc.)
+fn format_y_value(value: f64) -> String {
+    let abs_value = value.abs();
+    if abs_value >= 1_000_000_000.0 {
+        format!("{:.1}B", value / 1_000_000_000.0)
+    } else if abs_value >= 1_000_000.0 {
+        format!("{:.1}M", value / 1_000_000.0)
+    } else if abs_value >= 1_000.0 {
+        format!("{:.1}K", value / 1_000.0)
+    } else if abs_value >= 1.0 {
+        format!("{:.0}", value)
+    } else {
+        format!("{:.2}", value)
+    }
+}
+
+/// Calculate the number of Y-axis labels based on available height
+fn calc_y_label_count(bounds: &Bounds<Pixels>) -> usize {
+    let height = calc_height(bounds);
+    let max_labels = (height / ESTIMATED_Y_LABEL_HEIGHT).floor() as usize;
+    max_labels.clamp(MIN_Y_LABELS, MAX_Y_LABELS)
 }
 
 impl Plot for PlotInner {
@@ -314,25 +344,34 @@ impl Plot for PlotInner {
         // Get or compute cached scales
         let (x_scale, y_scale) = self.get_or_compute_scales(&bounds);
 
-        // Create Y-axis labels
+        // Create Y-axis labels with adaptive spacing based on available height
+        // Skip the first label (i=0, at y_min) to avoid overlap with X-axis labels in the corner
+        let y_label_count = calc_y_label_count(&bounds);
         #[allow(clippy::cast_precision_loss)]
-        let y_labels: Vec<AxisText> = (0..Y_AXIS_LABEL_COUNT)
+        let y_labels: Vec<AxisText> = (1..y_label_count)
             .filter_map(|i| {
-                let value = self.y_min
-                    + (self.y_max - self.y_min) * i as f64 / (Y_AXIS_LABEL_COUNT - 1) as f64;
+                let value =
+                    self.y_min + (self.y_max - self.y_min) * i as f64 / (y_label_count - 1) as f64;
                 y_scale.tick(&value).map(|tick| {
-                    AxisText::new(format!("{value:.0}"), tick, cx.theme().muted_foreground)
+                    AxisText::new(format_y_value(value), tick, cx.theme().muted_foreground)
                 })
             })
             .collect();
 
-        // Create X-axis labels (show every Nth date to avoid crowding)
-        let tick_margin = (self.dates.len() / MIN_TICK_SPACING).max(1);
+        // Create X-axis labels with width-based spacing to prevent overlap
+        let available_width = calc_width(&bounds);
+        let max_labels_that_fit = (available_width / ESTIMATED_DATE_LABEL_WIDTH).floor() as usize;
+        let tick_margin = if max_labels_that_fit > 0 && max_labels_that_fit < self.dates.len() {
+            ((self.dates.len() as f32) / (max_labels_that_fit as f32)).ceil() as usize
+        } else {
+            1
+        };
         let x_labels: Vec<AxisText> = self
             .dates
             .iter()
             .enumerate()
             .filter_map(|(i, d)| {
+                // Show evenly spaced labels, skip the last to avoid overlap with Y-axis area
                 if i % tick_margin == 0 {
                     x_scale
                         .tick(d)
@@ -343,10 +382,14 @@ impl Plot for PlotInner {
             })
             .collect();
 
-        // Draw axes
+        // Draw axes (no axis lines, just labels - lines would extend into label areas)
+        let width = calc_width(&bounds);
         PlotAxis::new()
             .x(height)
+            .hide_x_axis()
             .x_label(x_labels)
+            .y(width)
+            .hide_y_axis()
             .y_label(y_labels)
             .stroke(cx.theme().border)
             .paint(&bounds, window, cx);
