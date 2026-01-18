@@ -7,6 +7,7 @@ use ui::icons::IconName;
 
 mod line;
 mod pie;
+mod summary;
 
 pub fn init(cx: &mut App) -> Entity<Revenue> {
     cx.new(Revenue::new)

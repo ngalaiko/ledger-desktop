@@ -104,6 +104,13 @@ impl State {
         };
         (interval_start, interval_end)
     }
+
+    /// Get the interval for the previous period (one period before current)
+    pub fn get_previous_period_interval(&self) -> (chrono::NaiveDate, chrono::NaiveDate) {
+        let mut prev = self.clone();
+        prev.period_idx += 1;
+        prev.get_period_interval()
+    }
 }
 
 impl Default for State {

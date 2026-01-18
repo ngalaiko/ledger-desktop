@@ -38,7 +38,7 @@ impl Chart {
                         .into_iter()
                         .map(|(k, v)| (Label::for_commodity(cx, &k), v))
                         .collect();
-                    this.refresh_data(&dates, values, cx);
+                    this.refresh_data(&dates, values, None, cx);
                 });
                 cx.notify();
             },

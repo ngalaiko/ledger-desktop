@@ -21,6 +21,15 @@ use gpui_component::{
 
 use super::Label;
 
+/// Data for the previous period comparison
+#[derive(Debug, Clone, Default)]
+pub struct PreviousPeriodData {
+    /// Original dates from the previous period (for tooltip display)
+    pub dates: Vec<chrono::NaiveDate>,
+    /// Values aligned to current period indices (by day-of-period)
+    pub values: HashMap<String, Vec<Option<f64>>>,
+}
+
 // Constants for chart layout
 /// Padding around the plot area in pixels
 const PLOT_PADDING: f32 = 10.0;
@@ -56,10 +65,12 @@ impl Chart {
         &mut self,
         dates: &[chrono::NaiveDate],
         values: HashMap<Label, Vec<Option<f64>>>,
+        previous_period: Option<PreviousPeriodData>,
         _cx: &mut Context<Self>,
     ) {
         self.hovered_idx = None;
-        self.plot_inner.set_data(dates.to_vec(), values);
+        self.plot_inner
+            .set_data(dates.to_vec(), values, previous_period);
     }
 }
 
@@ -128,23 +139,38 @@ impl Render for Chart {
                 let chart_height = calc_height(&tooltip_data.1);
                 let cross_line = CrossLine::new(point(px(x_pos), px(mouse_y))).height(chart_height);
 
-                let values = self
+                // Get current period values
+                let current_values: Vec<_> = self
                     .plot_inner
                     .values
                     .iter()
-                    .filter_map(|(commodity, values_vec)| {
-                        values_vec[hovered_idx].map(|v| (commodity.clone(), v))
+                    .filter_map(|(label, values_vec)| {
+                        values_vec[hovered_idx].map(|v| (label.text.clone(), label.color, v))
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
 
-                // Create Dot components for each data point
-                let dots: Vec<Dot> = values
+                // Get previous period values and date if available
+                let previous_data: Option<(chrono::NaiveDate, HashMap<String, f64>)> =
+                    self.plot_inner.previous_period.as_ref().and_then(|prev| {
+                        let prev_date = prev.dates.get(hovered_idx).copied()?;
+                        let prev_values: HashMap<String, f64> = prev
+                            .values
+                            .iter()
+                            .filter_map(|(commodity, values)| {
+                                values.get(hovered_idx).and_then(|v| v.map(|val| (commodity.clone(), val)))
+                            })
+                            .collect();
+                        Some((prev_date, prev_values))
+                    });
+
+                // Create Dot components for each data point (current period only)
+                let dots: Vec<Dot> = current_values
                     .iter()
-                    .filter_map(|(commodity, value)| {
+                    .filter_map(|(_, color, value)| {
                         y_scale.tick(value).map(|y_pos| {
                             Dot::new(point(px(x_pos), px(y_pos)))
                                 .size(px(10.0))
-                                .fill(commodity.color)
+                                .fill(*color)
                                 .stroke(cx.theme().background)
                         })
                     })
@@ -156,6 +182,10 @@ impl Render for Chart {
                 } else {
                     TooltipPosition::Left
                 };
+
+                let green = cx.theme().colors.green;
+                let red = cx.theme().colors.red;
+                let muted = cx.theme().muted_foreground;
 
                 this.child(
                     Tooltip::new()
@@ -169,22 +199,77 @@ impl Render for Chart {
                         .bg(cx.theme().background)
                         .rounded_lg()
                         .shadow_lg()
-                        .child(div().text_sm().font_semibold().child(date.to_string()))
-                        .children(values.iter().map(|(commodity, value)| {
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(div().text_xs().text_color(commodity.color).child("—"))
+                        .children(current_values.iter().map(|(commodity, color, current_value)| {
+                            let prev_value = previous_data
+                                .as_ref()
+                                .and_then(|(_, vals)| vals.get(commodity).copied());
+
+                            // Calculate difference if previous value exists
+                            let diff_element = prev_value.map(|prev| {
+                                let diff = current_value - prev;
+                                let (indicator, diff_color) = if diff < 0.0 {
+                                    ("▼", green) // Less spent = green (good for expenses)
+                                } else if diff > 0.0 {
+                                    ("▲", red) // More spent = red (bad for expenses)
+                                } else {
+                                    ("", muted)
+                                };
+                                (indicator, diff_color, diff.abs())
+                            });
+
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                // Header row: commodity name + difference
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            h_flex()
+                                                .gap_1()
+                                                .items_center()
+                                                .child(div().text_xs().text_color(*color).child("—"))
+                                                .child(div().text_sm().font_semibold().child(commodity.clone()))
+                                        )
+                                        .when_some(diff_element.clone(), |el, (indicator, diff_color, diff_val)| {
+                                            el.child(
+                                                h_flex()
+                                                    .gap_1()
+                                                    .text_sm()
+                                                    .text_color(diff_color)
+                                                    .child(indicator)
+                                                    .child(format_y_value(diff_val))
+                                            )
+                                        })
+                                )
+                                // Current period row
                                 .child(
                                     h_flex()
                                         .gap_2()
                                         .text_xs()
-                                        .font_medium()
-                                        .w_full()
                                         .justify_between()
-                                        .child(commodity.text.clone())
-                                        .child(value.to_string()),
+                                        .child(format!("{}", date.format("%b %-d")))
+                                        .child(format_y_value(*current_value))
                                 )
+                                // Previous period row (if available)
+                                .when_some(previous_data.as_ref(), |el, (prev_date, prev_vals)| {
+                                    if let Some(prev_val) = prev_vals.get(commodity) {
+                                        el.child(
+                                            h_flex()
+                                                .gap_2()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .justify_between()
+                                                .child(format!("{}", prev_date.format("%b %-d, %Y")))
+                                                .child(format_y_value(*prev_val))
+                                        )
+                                    } else {
+                                        el
+                                    }
+                                })
                         })),
                 )
             })
@@ -195,6 +280,9 @@ impl Render for Chart {
 struct PlotInner {
     dates: Vec<chrono::NaiveDate>,
     values: HashMap<Label, Vec<Option<f64>>>,
+
+    /// Previous period data for comparison (optional)
+    previous_period: Option<PreviousPeriodData>,
 
     y_min: f64,
     y_max: f64,
@@ -210,6 +298,7 @@ impl PlotInner {
         Self {
             dates: vec![],
             values: HashMap::new(),
+            previous_period: None,
             y_min: 0.0,
             y_max: 0.0,
             bounds: Rc::new(Cell::new(None)),
@@ -223,13 +312,16 @@ impl PlotInner {
         &mut self,
         dates: Vec<chrono::NaiveDate>,
         values: HashMap<Label, Vec<Option<f64>>>,
+        previous_period: Option<PreviousPeriodData>,
     ) {
         self.dates = dates;
         self.values = values;
+        self.previous_period = previous_period;
 
         let mut min_balance = f64::MAX;
         let mut max_balance = f64::MIN;
 
+        // Consider current period values for Y scale
         for values in self.values.values() {
             debug_assert!(
                 values.len() == self.dates.len(),
@@ -238,6 +330,16 @@ impl PlotInner {
             for v in values.iter().flatten() {
                 min_balance = v.min(min_balance);
                 max_balance = v.max(max_balance);
+            }
+        }
+
+        // Also consider previous period values for Y scale
+        if let Some(prev) = &self.previous_period {
+            for values in prev.values.values() {
+                for v in values.iter().flatten() {
+                    min_balance = v.min(min_balance);
+                    max_balance = v.max(max_balance);
+                }
             }
         }
 
@@ -394,7 +496,25 @@ impl Plot for PlotInner {
             .stroke(cx.theme().border)
             .paint(&bounds, window, cx);
 
-        // Draw a line for each label
+        // Draw previous period lines first (so they appear behind current period)
+        if let Some(prev) = &self.previous_period {
+            let prev_color = cx.theme().muted_foreground;
+            for values in prev.values.values() {
+                let x_scale = x_scale.clone();
+                let y_scale = y_scale.clone();
+
+                Line::new()
+                    .data(self.dates.iter().zip(values.iter()))
+                    .x(move |d| x_scale.tick(d.0))
+                    .y(move |d| d.1.and_then(|value| y_scale.tick(&value)))
+                    .stroke(prev_color)
+                    .stroke_width(px(1.0))
+                    .stroke_style(StrokeStyle::Linear)
+                    .paint(&bounds, window);
+            }
+        }
+
+        // Draw current period lines (on top)
         for (label, values) in &self.values {
             let x_scale = x_scale.clone();
             let y_scale = y_scale.clone();
@@ -403,7 +523,7 @@ impl Plot for PlotInner {
                 .data(self.dates.iter().zip(values.iter()))
                 .x(move |d| x_scale.tick(d.0))
                 .y(move |d| d.1.and_then(|value| y_scale.tick(&value)))
-                .stroke(label.color.clone())
+                .stroke(label.color)
                 .stroke_width(px(1.0))
                 .stroke_style(StrokeStyle::Linear)
                 .paint(&bounds, window);
