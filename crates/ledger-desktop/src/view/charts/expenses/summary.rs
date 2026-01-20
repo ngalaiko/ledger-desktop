@@ -18,7 +18,7 @@ pub fn init(cx: &mut App) -> Entity<Summary> {
 pub struct Summary {
     current_total: HashMap<String, f64>,
     previous_total: HashMap<String, f64>,
-    current_period: (NaiveDate, NaiveDate),
+    current_period: std::ops::Range<chrono::NaiveDate>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -37,12 +37,12 @@ impl Summary {
 
                 // Calculate current period data
                 let current_interval = app_state.values.get_period_interval();
+                this.current_total = calculate(daily_balance, &current_interval);
                 this.current_period = current_interval;
-                this.current_total = calculate(daily_balance, current_interval);
 
                 // Calculate previous period data
                 let prev_interval = app_state.values.get_previous_period_interval();
-                this.previous_total = calculate(daily_balance, prev_interval);
+                this.previous_total = calculate(daily_balance, &prev_interval);
 
                 cx.notify();
             },
@@ -50,7 +50,7 @@ impl Summary {
         Self {
             current_total: HashMap::new(),
             previous_total: HashMap::new(),
-            current_period: (NaiveDate::default(), NaiveDate::default()),
+            current_period: NaiveDate::default()..NaiveDate::default(),
             _subscriptions: subscriptions,
         }
     }
@@ -58,7 +58,7 @@ impl Summary {
 
 fn calculate(
     daily_balance: &DailyBalance,
-    (min_date, max_date): (NaiveDate, NaiveDate),
+    date_range: &std::ops::Range<NaiveDate>,
 ) -> HashMap<String, f64> {
     // Collect expense accounts
     let expense_accounts: Vec<_> = daily_balance
@@ -69,8 +69,8 @@ fn calculate(
     let mut total_balance = Balance::default();
 
     // Sum daily balances across all expense accounts for the entire period
-    let mut current_date = min_date;
-    while current_date <= max_date {
+    let mut current_date = date_range.start;
+    while date_range.contains(&current_date) {
         for (account, _) in &expense_accounts {
             let daily = daily_balance.get_daily_balance(account, current_date);
             total_balance.add(&daily);
@@ -125,8 +125,11 @@ impl Render for Summary {
         let red = cx.theme().colors.red;
         let muted = cx.theme().muted_foreground;
 
-        let (start, end) = self.current_period;
-        let date_range = format!("{} – {}", start.format("%d/%m/%y"), end.format("%d/%m/%y"));
+        let date_range = format!(
+            "{} – {}",
+            self.current_period.start.format("%d/%m/%y"),
+            self.current_period.end.format("%d/%m/%y")
+        );
 
         // Collect all commodities from both current and previous periods
         let mut all_commodities: Vec<_> = self

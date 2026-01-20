@@ -69,14 +69,14 @@ fn calculate(
             continue;
         }
 
-        let min_date = *dates.first().unwrap();
-        let max_date = *dates.last().unwrap();
+        let range = dates.first().expect("at least one date").clone()
+            ..=dates.last().expect("at least one date").clone();
 
         let mut running = Balance::default();
         let mut account_running: BTreeMap<chrono::NaiveDate, Balance> = BTreeMap::new();
 
-        let mut current_date = min_date;
-        while current_date <= max_date {
+        let mut current_date = range.start().clone();
+        while range.contains(&current_date) {
             if let Some(daily) = daily_balances.get(&current_date) {
                 running.add(daily);
             }

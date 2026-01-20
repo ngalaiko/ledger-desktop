@@ -39,11 +39,11 @@ impl Chart {
 
                     // Calculate current period data
                     let current_interval = app_state.values.get_period_interval();
-                    let (dates, values) = calculate(daily_balance, current_interval);
+                    let (dates, values) = calculate(daily_balance, &current_interval);
 
                     // Calculate previous period data
                     let prev_interval = app_state.values.get_previous_period_interval();
-                    let (prev_dates, prev_values) = calculate(daily_balance, prev_interval);
+                    let (prev_dates, prev_values) = calculate(daily_balance, &prev_interval);
 
                     // Align previous period values to current period indices
                     let previous_period =
@@ -105,7 +105,7 @@ fn align_previous_period(
 
 fn calculate(
     daily_balance: &DailyBalance,
-    (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
+    date_range: &std::ops::Range<chrono::NaiveDate>,
 ) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
     // Collect revenue accounts
     let revenue_accounts: Vec<_> = daily_balance
@@ -118,8 +118,8 @@ fn calculate(
     let mut cumulative_balance = Balance::default();
 
     // Iterate through each day in the filtered range
-    let mut current_date = min_date;
-    while current_date <= max_date {
+    let mut current_date = date_range.start;
+    while date_range.contains(&current_date) {
         // Sum daily balances across all revenue accounts for this date
         for (account, _) in &revenue_accounts {
             let daily = daily_balance.get_daily_balance(account, current_date);

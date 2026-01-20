@@ -53,7 +53,7 @@ impl Chart {
 
 fn calculate(
     daily_balance: &DailyBalance,
-    (from_date, to_date): (chrono::NaiveDate, chrono::NaiveDate),
+    date_range: std::ops::Range<chrono::NaiveDate>,
     target_commodity: Option<&str>,
 ) -> HashMap<Account, f64> {
     let Some(target_commodity) = target_commodity else {
@@ -70,7 +70,7 @@ fn calculate(
 
         let mut account_total = 0.0;
         for (date, balance) in date_balances {
-            if *date < from_date || *date > to_date {
+            if !date_range.contains(date) {
                 continue;
             }
 

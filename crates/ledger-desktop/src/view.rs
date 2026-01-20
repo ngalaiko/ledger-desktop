@@ -41,14 +41,14 @@ impl Window {
 
 impl Render for Window {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (from, to) = state::AppState::get_period_interval(cx);
+        let range = state::AppState::get_period_interval(cx);
         let period = state::AppState::get_period(cx);
 
         let title = h_flex()
             .gap_2()
             .child(div().font_semibold().text_lg().child(match period {
-                Period::Week | Period::Month => to.format("%B %Y").to_string(),
-                Period::Year => to.format("%Y").to_string(),
+                Period::Week | Period::Month => range.end.format("%B %Y").to_string(),
+                Period::Year => range.end.format("%Y").to_string(),
             }))
             .child(
                 div()
@@ -56,8 +56,8 @@ impl Render for Window {
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
                         "{} - {}",
-                        from.format("%d %b %Y"),
-                        to.format("%d %b %Y")
+                        range.start.format("%d %b %Y"),
+                        range.end.format("%d %b %Y")
                     )),
             );
 

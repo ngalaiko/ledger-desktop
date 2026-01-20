@@ -1,5 +1,7 @@
 pub mod period;
 
+use std::ops::Range;
+
 use anyhow::{anyhow, Error};
 use chrono::Datelike;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
@@ -56,7 +58,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn get_period_interval(&self) -> (chrono::NaiveDate, chrono::NaiveDate) {
+    pub fn get_period_interval(&self) -> Range<chrono::NaiveDate> {
         let today_date = chrono::Local::now().date_naive();
         let interval_end = match self.period {
             Period::Week => {
@@ -95,11 +97,11 @@ impl State {
                 chrono::NaiveDate::from_ymd_opt(interval_end.year(), 1, 1).expect("valid date")
             }
         };
-        (interval_start, interval_end)
+        interval_start..(interval_end + chrono::Duration::days(1))
     }
 
     /// Get the interval for the previous period (one period before current)
-    pub fn get_previous_period_interval(&self) -> (chrono::NaiveDate, chrono::NaiveDate) {
+    pub fn get_previous_period_interval(&self) -> Range<chrono::NaiveDate> {
         let mut prev = self.clone();
         prev.period_idx += 1;
         prev.get_period_interval()
@@ -216,7 +218,7 @@ impl AppState {
         })
     }
 
-    pub fn get_period_interval(cx: &App) -> (chrono::NaiveDate, chrono::NaiveDate) {
+    pub fn get_period_interval(cx: &App) -> Range<chrono::NaiveDate> {
         Self::global(cx).read(cx).values.get_period_interval()
     }
 

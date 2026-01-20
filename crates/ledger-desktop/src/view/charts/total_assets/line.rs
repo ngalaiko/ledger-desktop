@@ -52,7 +52,7 @@ impl Chart {
 
 fn calculate(
     running_balance: &RunningBalance,
-    (min_date, max_date): (chrono::NaiveDate, chrono::NaiveDate),
+    date_range: std::ops::Range<chrono::NaiveDate>,
 ) -> (Vec<chrono::NaiveDate>, HashMap<String, Vec<Option<f64>>>) {
     // Collect accounts that are Assets or Liabilities
     let accounts: Vec<_> = running_balance
@@ -70,8 +70,8 @@ fn calculate(
     let mut plot_balances = Vec::new();
 
     // Iterate through each day in the filtered range
-    let mut current_date = min_date;
-    while current_date <= max_date {
+    let mut current_date = date_range.start;
+    while current_date < date_range.end {
         // Sum balances across all asset and liability accounts for this date
         let mut total_balance = Balance::default();
         for account in &accounts {

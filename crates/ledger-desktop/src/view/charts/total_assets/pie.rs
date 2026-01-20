@@ -56,7 +56,7 @@ impl Chart {
 
 fn calculate(
     running_balance: &RunningBalance,
-    (_from, max_date): (chrono::NaiveDate, chrono::NaiveDate),
+    date_range: std::ops::Range<chrono::NaiveDate>,
     target_commodity: Option<&str>,
 ) -> HashMap<Account, f64> {
     let Some(target_commodity) = target_commodity else {
@@ -75,7 +75,8 @@ fn calculate(
             continue;
         }
 
-        let balance = running_balance.get_balance(account, max_date);
+        let balance =
+            running_balance.get_balance(account, date_range.end - chrono::Duration::days(1));
 
         // Try to get the target commodity amount directly (already converted)
         if let Some(amount) = balance.get_amount(target_commodity) {
