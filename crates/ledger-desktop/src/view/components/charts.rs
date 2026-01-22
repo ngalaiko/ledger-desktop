@@ -2,6 +2,7 @@ use gpui::{App, Hsla};
 use gpui_component::{ActiveTheme, Colorize, Theme};
 use ledger::Account;
 
+pub mod bar;
 pub mod line;
 pub mod pie;
 

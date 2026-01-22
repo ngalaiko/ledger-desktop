@@ -18,7 +18,6 @@ pub fn init(cx: &mut App) -> Entity<Summary> {
 pub struct Summary {
     current_total: HashMap<String, f64>,
     previous_total: HashMap<String, f64>,
-    current_period: std::ops::Range<chrono::NaiveDate>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -38,7 +37,6 @@ impl Summary {
                 // Calculate current period data
                 let current_interval = app_state.values.get_period_interval();
                 this.current_total = calculate(daily_balance, &current_interval);
-                this.current_period = current_interval;
 
                 // Calculate previous period data
                 let prev_interval = app_state.values.get_previous_period_interval();
@@ -50,7 +48,6 @@ impl Summary {
         Self {
             current_total: HashMap::new(),
             previous_total: HashMap::new(),
-            current_period: NaiveDate::default()..NaiveDate::default(),
             _subscriptions: subscriptions,
         }
     }
@@ -126,12 +123,6 @@ impl Render for Summary {
         let red = cx.theme().colors.red;
         let muted = cx.theme().muted_foreground;
 
-        let date_range = format!(
-            "{} – {}",
-            self.current_period.start.format("%d/%m/%y"),
-            self.current_period.end.format("%d/%m/%y")
-        );
-
         // Collect all commodities from both current and previous periods
         let mut all_commodities: Vec<_> = self
             .current_total
@@ -141,6 +132,14 @@ impl Render for Summary {
             .collect();
         all_commodities.sort();
         all_commodities.dedup();
+
+        // Handle no data
+        if all_commodities.is_empty() {
+            return v_flex()
+                .gap_1()
+                .child(div().text_sm().text_color(muted).child("Revenue"))
+                .child(div().text_2xl().font_semibold().child("0"));
+        }
 
         v_flex()
             .gap_1()
@@ -166,23 +165,21 @@ impl Render for Summary {
                         format_value(current),
                         commodity
                     )))
-                    // Difference + current period dates
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .text_sm()
-                            .when_some(diff, |el, d| {
-                                el.child(
-                                    h_flex()
-                                        .gap_1()
-                                        .text_color(diff_color)
-                                        .child(indicator)
-                                        .child(format!("{} {}", format_value(d.abs()), commodity)),
-                                )
-                                .child(div().text_color(muted).child("·"))
-                            })
-                            .child(div().text_color(muted).child(date_range.clone())),
-                    )
+                    // Difference from previous period
+                    .when_some(diff, |el, d| {
+                        if d.abs() > f64::EPSILON {
+                            el.child(
+                                h_flex()
+                                    .gap_1()
+                                    .text_sm()
+                                    .text_color(diff_color)
+                                    .child(indicator)
+                                    .child(format!("{} {}", format_value(d.abs()), commodity)),
+                            )
+                        } else {
+                            el
+                        }
+                    })
             }))
     }
 }

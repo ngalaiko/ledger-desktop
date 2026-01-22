@@ -47,8 +47,8 @@ impl Render for Window {
         let title = h_flex()
             .gap_2()
             .child(div().font_semibold().text_lg().child(match period {
-                Period::Week | Period::Month => range.end.format("%B %Y").to_string(),
-                Period::Year => range.end.format("%Y").to_string(),
+                Period::Week | Period::Month => range.start.format("%B %Y").to_string(),
+                Period::Year => range.start.format("%Y").to_string(),
             }))
             .child(
                 div()

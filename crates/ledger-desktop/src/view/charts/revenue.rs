@@ -5,6 +5,7 @@ use gpui_component::{h_flex, v_flex};
 
 use ui::icons::IconName;
 
+mod bar;
 mod line;
 mod pie;
 mod summary;
@@ -16,6 +17,7 @@ pub fn init(cx: &mut App) -> Entity<Revenue> {
 pub struct Revenue {
     line: Entity<line::Chart>,
     pie: Entity<pie::Chart>,
+    bar: Entity<bar::Chart>,
 }
 
 impl Revenue {
@@ -23,6 +25,7 @@ impl Revenue {
         Self {
             line: line::init(cx),
             pie: pie::init(cx),
+            bar: bar::init(cx),
         }
     }
 }
@@ -47,19 +50,29 @@ impl Render for Revenue {
                         })),
                 )
                 .child(
+                    Button::new("revenue-bar-chart")
+                        .icon(IconName::ChartBar)
+                        .ghost()
+                        .tooltip("Bar Chart")
+                        .on_click(cx.listener(|_this, _event, _window, cx| {
+                            state::AppState::update_selected_revenue_tab_idx(1, cx);
+                        })),
+                )
+                .child(
                     Button::new("revenue-pie-chart")
                         .icon(IconName::ChartPie)
                         .ghost()
                         .tooltip("Pie Chart")
                         .on_click(cx.listener(|_this, _event, _window, cx| {
-                            state::AppState::update_selected_revenue_tab_idx(1, cx);
+                            state::AppState::update_selected_revenue_tab_idx(2, cx);
                         })),
                 ),
         );
 
         match selected_tab {
             0 => container.child(self.line.clone()),
-            1 => container.child(self.pie.clone()),
+            1 => container.child(self.bar.clone()),
+            2 => container.child(self.pie.clone()),
             _ => div().child("Invalid tab index"),
         }
     }

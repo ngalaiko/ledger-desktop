@@ -19,6 +19,7 @@ impl<T: IconNamed> From<T> for Icon {
 pub enum IconName {
     ArrowLeft,
     ArrowRight,
+    ChartBar,
     ChartPie,
     ChartLine,
     ChevronRight,
@@ -39,6 +40,7 @@ impl IconNamed for IconName {
         match self {
             Self::ArrowLeft => "icons/arrow-left.svg",
             Self::ArrowRight => "icons/arrow-right.svg",
+            Self::ChartBar => "icons/chart-bar.svg",
             Self::ChartPie => "icons/chart-pie.svg",
             Self::ChartLine => "icons/chart-line.svg",
             Self::ChevronDown => "icons/chevron-down.svg",
